@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f1ea">
+  <title>FIRE LIFE</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main id="githubLoginView" class="login-page">
+    <section class="login-card" aria-labelledby="githubLoginTitle">
+      <h1 id="githubLoginTitle">Financial Independence<br>Retire Early</h1>
+      <form id="githubLoginForm">
+        <label class="field"><span>GitHub Token</span><input id="githubLoginToken" name="githubLoginToken" type="password" autocomplete="current-password" required></label>
+        <button id="githubLoginButton" class="button primary full" type="submit">登入</button>
+        <p id="githubLoginMessage" class="message" role="status"></p>
+      </form>
+    </section>
+  </main>
+
+  <div id="appView" class="app" hidden>
+    <header class="topbar">
+      <a class="brand" href="#overview">FIRE LIFE</a>
+      <button id="openGithubSettingsDialog" class="text-button github-settings-button" type="button" aria-label="GitHub 設定" title="GitHub 設定"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .7a11.5 11.5 0 0 0-3.64 22.4c.58.1.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.04 1.77 2.72 1.26 3.38.96.1-.75.4-1.26.74-1.55-2.57-.29-5.27-1.28-5.27-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.76 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.71 5.38-5.29 5.67.42.36.79 1.06.79 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg><span id="appVersion" class="app-version"></span></button>
+    </header>
+    <nav class="tabs" aria-label="主要功能">
+      <a href="#overview" data-route="overview">總覽</a>
+      <a href="#cashflow" data-route="cashflow">每月收支</a>
+      <a href="#assets" data-route="assets">資產</a>
+      <a href="#liabilities" data-route="liabilities">負債</a>
+      <a href="#settings" data-route="settings">退休設定</a>
+    </nav>
+
+    <main class="content">
+      <section id="overviewPage" class="page">
+        <div class="page-heading"><div><p class="eyebrow">RETIREMENT OVERVIEW</p><h2>距離自由，還有多遠？</h2></div><span id="updatedAt" class="muted"></span></div>
+        <div id="metrics" class="metric-grid"></div>
+        <section class="card progress-card">
+          <div class="card-heading"><div><p class="caption">退休準備進度</p><strong id="progressText">0%</strong></div><span id="targetAgeBadge" class="badge">55 歲</span></div>
+          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+          <div class="progress-labels"><span id="currentAssetsLabel"></span><span id="targetAssetsLabel"></span></div>
+        </section>
+        <section class="card">
+          <div class="card-heading"><div><p class="caption">接下來的行動</p><h3>本月建議</h3></div></div>
+          <div id="recommendations" class="recommendations"></div>
+        </section>
+      </section>
+
+      <section id="assetsPage" class="page" hidden>
+        <div class="page-heading"><div><p class="eyebrow">ASSETS</p><h2>資產</h2></div><span id="assetsUpdatedAt" class="muted"></span></div>
+        <form id="assetForm" class="card form-grid">
+          <div class="form-span asset-section-heading"><p class="caption">AVAILABLE ASSETS</p><h3>可運用資產</h3></div>
+          <label class="field"><span>帳戶總餘額</span><input name="totalBalance" type="text" inputmode="decimal" required placeholder="0"></label>
+          <label class="field"><span>持股市值</span><input name="holdingsValue" type="text" inputmode="decimal" required placeholder="0"></label>
+          <section class="asset-subsection form-span">
+            <div class="asset-section-heading pension-heading"><div><p class="caption">LABOR PENSION</p><h3>勞退 <button id="openTenureDialog" class="pension-tenure" type="button"></button></h3><a href="https://edesk.bli.gov.tw/me/#/na/login" target="_blank" rel="noopener noreferrer">[由此試算]</a></div></div>
+            <div class="form-grid">
+              <label class="field"><span>雇主提繳</span><input name="employerContribution" type="text" inputmode="decimal" required placeholder="0"></label>
+              <label class="field"><span>收益累計金額</span><input name="pensionReturns" type="text" inputmode="decimal" required placeholder="0"></label>
+              <div class="pension-total"><span>勞退專戶總額</span><strong id="laborPensionTotal">$0</strong></div>
+            </div>
+          </section>
+          <div class="form-actions"><button class="button primary" type="submit">更新資產資料</button><p id="assetMessage" class="message" role="status"></p></div>
+        </form>
+      </section>
+
+      <section id="liabilitiesPage" class="page" hidden>
+        <div class="page-heading"><div><p class="eyebrow">MORTGAGE</p><h2 class="inline-page-title">房貸 <button id="openMortgageHistoryDialog" class="heading-link" type="button">（年度還款紀錄）</button></h2></div><span id="mortgageUpdatedAt" class="muted"></span></div>
+        <div id="mortgageMetrics" class="metric-grid mortgage-metrics"></div>
+        <form id="mortgageForm" class="card form-grid">
+          <label class="field"><span>截至日期</span><input name="asOfDate" type="date"></label>
+          <label class="field"><span>剩餘房貸</span><input name="annualRemainingPrincipal" type="text" inputmode="decimal" placeholder="0"></label>
+          <label class="field"><span>年度利率（%）</span><input name="annualInterestRate" type="text" inputmode="decimal" placeholder="未更新則沿用前一年度"></label>
+          <label class="field"><span>備註</span><input name="note" type="text" placeholder="提前還款、利率調整或其他資訊"></label>
+          <div class="form-actions"><button class="button primary" type="submit">更新房貸資料</button><p id="mortgageMessage" class="message" role="status"></p></div>
+        </form>
+      </section>
+
+      <section id="cashflowPage" class="page" hidden>
+        <div class="page-heading"><div><p class="eyebrow">CASH FLOW</p><h2 class="inline-page-title">每月收支 <button id="openCashflowRecordsDialog" class="heading-link" type="button">（每月紀錄）</button></h2></div><div class="heading-side"><div class="cashflow-actions"><button id="openIncomeDialog" class="button primary" type="button">新增收入</button><button id="openExpenseDialog" class="button secondary" type="button">新增支出</button></div><span id="cashflowsUpdatedAt" class="muted"></span></div></div>
+        <div id="cashflowLatestEmpty" class="card empty">尚未建立每月收支資料。</div>
+        <div id="cashflowLatestOverview" hidden>
+          <div id="cashflowLatestMetrics" class="metric-grid cashflow-latest-metrics"></div>
+          <div class="card cashflow-breakdown"><section><p class="caption">INCOME</p><h3>收入明細</h3><div id="latestIncomeBreakdown"></div></section><section><p class="caption">EXPENSES</p><h3>支出明細</h3><div id="latestExpenseBreakdown"></div></section></div>
+        </div>
+        <dialog id="cashflowEntryDialog" class="cashflow-entry-dialog">
+          <div class="dialog-form">
+            <div class="dialog-heading"><h2 id="cashflowEntryTitle">新增收入</h2><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+        <nav class="section-tabs" aria-label="每月收支分類">
+          <button class="active" type="button" data-cashflow-tab="income">收入</button>
+          <button type="button" data-cashflow-tab="expense">支出</button>
+        </nav>
+        <form id="cashflowForm" class="cashflow-form">
+          <label class="field month-field"><span>年月份</span><input name="month" type="month" required></label>
+          <div id="cashflowIncomePanel" class="cashflow-tab-panel">
+            <section class="cashflow-section">
+              <div class="section-heading"><p class="caption">SALARY</p><h3>薪資</h3></div>
+              <div class="cashflow-fields">
+                <p class="cashflow-group-label">加項</p>
+                <label class="field"><span>基本薪資</span><input name="baseSalary" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>伙食津貼</span><input name="mealAllowance" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>免稅加班費</span><input name="taxFreeOvertime" type="text" inputmode="decimal" required placeholder="0"></label>
+                <p class="cashflow-group-label">扣項</p>
+                <label class="field"><span>勞保</span><input name="laborInsurance" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>健保</span><input name="healthInsurance" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>所得稅</span><input name="incomeTax" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>福利金</span><input name="welfareFund" type="text" inputmode="decimal" required placeholder="0"></label>
+                <div class="cashflow-total"><span>當月薪資</span><strong id="monthlySalaryTotal">$0</strong></div>
+              </div>
+            </section>
+            <section class="cashflow-section">
+              <div class="section-heading"><p class="caption">OTHER INCOME</p><h3>其他收入</h3></div>
+              <div class="cashflow-fields">
+                <label class="field"><span>獎金</span><input name="bonus" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>每月配息</span><input name="dividends" type="text" inputmode="decimal" required placeholder="0"></label>
+              </div>
+            </section>
+          </div>
+          <div id="cashflowExpensePanel" class="cashflow-tab-panel" hidden>
+            <section class="cashflow-section">
+              <div class="section-heading"><p class="caption">FIXED EXPENSES</p><h3>固定支出</h3></div>
+              <div class="cashflow-fields">
+                <label class="field"><span>房貸</span><input name="mortgage" type="text" inputmode="decimal" required></label>
+                <label class="field"><span>水電瓦斯</span><input name="utilities" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>電信／網路</span><input name="internet" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>管理費</span><input name="managementFee" type="text" inputmode="decimal" required placeholder="0"></label>
+              </div>
+            </section>
+            <section class="cashflow-section">
+              <div class="section-heading"><p class="caption">OTHER EXPENSES</p><h3>其他支出</h3></div>
+              <div class="cashflow-fields">
+                <label class="field"><span>生活開銷</span><input name="livingExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>教育費用</span><input name="educationExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+              </div>
+            </section>
+          </div>
+          <div class="form-actions"><button class="button primary" type="submit">更新每月收支</button><p id="cashflowMessage" class="message" role="status"></p></div>
+        </form>
+          </div>
+        </dialog>
+      </section>
+
+      <section id="settingsPage" class="page" hidden>
+        <div class="page-heading"><div><p class="eyebrow">SETTINGS</p><h2>退休設定</h2></div></div>
+        <form id="settingsForm" class="card form-grid">
+          <label class="field"><span>目前年齡</span><input name="currentAge" type="text" inputmode="text" placeholder="例如：今年-1983" required></label>
+          <label class="field"><span>預計退休年齡</span><input name="retirementAge" type="text" inputmode="decimal" required></label>
+          <label class="field"><span>規劃至幾歲</span><input name="lifeExpectancy" type="text" inputmode="decimal" required></label>
+          <label class="field"><span>退休後每月生活費</span><input name="retirementMonthlySpend" type="text" inputmode="decimal" required></label>
+          <label class="field"><span>退休前年化報酬率（%）</span><input name="preReturn" type="text" inputmode="decimal" required></label>
+          <label class="field"><span>退休後年化報酬率（%）</span><input name="postReturn" type="text" inputmode="decimal" required></label>
+          <label class="field"><span>預估通膨率（%）</span><input name="inflation" type="text" inputmode="decimal" required></label>
+          <div class="form-actions"><button class="button primary" type="submit">儲存設定</button><p id="settingsMessage" class="message" role="status"></p></div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="mortgageHistoryDialog" class="wide-dialog">
+    <div class="dialog-form">
+      <div class="dialog-heading"><h2>年度還款紀錄</h2><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+      <div class="payment-totals mortgage-dialog-totals"><span>已支付利息：<strong id="totalMortgageInterest">$0</strong></span><span>已支付本金：<strong id="totalMortgagePrincipal">$0</strong></span></div>
+      <div id="mortgageHistoryEmpty" class="empty">尚未建立年度還款紀錄。</div>
+      <div class="table-wrap"><table id="mortgageHistoryTable"><thead><tr><th>年度</th><th class="number">年度利率</th><th class="number">期初本金</th><th class="number">償還本金</th><th class="number">支付利息</th><th class="number">火險／地震險</th><th class="number">總付款</th><th class="number">期末本金</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </dialog>
+
+  <dialog id="cashflowRecordsDialog" class="wide-dialog">
+    <div class="dialog-form">
+      <div class="dialog-heading"><h2>每月收支紀錄</h2><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+      <div id="cashflowEmpty" class="empty">還沒有收支資料。</div>
+      <div class="table-wrap"><table id="cashflowTable"><thead><tr><th>月份</th><th class="number">收入</th><th class="number">固定支出</th><th class="number">生活開銷</th><th class="number">教育費用</th><th class="number">總支出</th><th class="number">結餘</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </dialog>
+
+  <dialog id="tenureDialog">
+    <form id="tenureForm" class="dialog-form">
+      <div class="dialog-heading"><h2>修改累積提繳年資</h2><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+      <div class="form-grid">
+        <label class="field"><span>年</span><input name="years" type="text" inputmode="numeric" required></label>
+        <label class="field"><span>月</span><input name="months" type="text" inputmode="numeric" required></label>
+      </div>
+      <p id="tenureMessage" class="message" role="status"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" data-close-dialog>取消</button><button class="button primary" type="submit">儲存</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="githubSettingsDialog">
+    <form id="githubSettingsForm" class="dialog-form">
+      <div class="dialog-heading"><h2>GitHub 設定</h2><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+      <label class="field"><span>Personal Access Token</span><input id="githubToken" name="githubToken" type="password" autocomplete="off"></label>
+      <p class="muted">Token 僅儲存在這台裝置的瀏覽器，需具備 FIRE repository 的 Contents 讀寫權限。</p>
+      <p id="githubSettingsMessage" class="message" role="status"></p>
+      <div class="dialog-actions"><button id="clearGithubToken" class="button secondary" type="button">清除 Token</button><button class="button primary" type="submit">儲存</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
