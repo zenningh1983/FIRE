@@ -431,7 +431,11 @@ $('#githubSettingsForm').addEventListener('submit', async (event) => {
   finally { setBusy(button, false); }
 });
 $('#clearGithubToken').addEventListener('click', () => {
-  clearGithubToken(); $('#githubToken').value = ''; $('#githubSettingsDialog').close(); showGithubLogin('Token 已清除，請重新登入。');
+  clearGithubToken();
+  $('#githubSettingsForm').reset();
+  $('#githubLoginForm').reset();
+  $('#githubSettingsDialog').close();
+  showGithubLogin('Token 已清除，請重新登入。');
 });
 $('#tenureForm').addEventListener('submit', async (event) => {
   event.preventDefault();
