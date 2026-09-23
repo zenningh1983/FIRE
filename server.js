@@ -181,7 +181,7 @@ const server = http.createServer(async (request, response) => {
     try {
       const data = await readJson(request);
       if (!Array.isArray(data.records)) throw new Error('每月收支資料格式不正確。');
-      const fields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction', 'netSalary', 'bonus', 'cathayDividends', 'yuantaDividends', 'dividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'livingExpenses', 'personalInsuranceExpenses', 'insuranceExpenses', 'petExpenses', 'educationExpenses', 'petInsuranceExpenses', 'propertyLandTax', 'comprehensiveIncomeTax', 'otherTaxes', 'totalIncome', 'fixedExpenses', 'totalExpense', 'net'];
+      const fields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction', 'netSalary', 'bonus', 'cathayDividends', 'yuantaDividends', 'dividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'cathayCardExpenses', 'fubonCardExpenses', 'otherCardExpenses', 'cashExpenses', 'accountExpenses', 'livingExpenses', 'personalInsuranceExpenses', 'insuranceExpenses', 'petExpenses', 'educationExpenses', 'petInsuranceExpenses', 'propertyLandTax', 'comprehensiveIncomeTax', 'otherTaxes', 'totalIncome', 'fixedExpenses', 'totalExpense', 'net'];
       const noteFields = ['bonusNote', 'otherTaxesNote'];
       const records = data.records.map((record) => {
         if (!/^\d{4}-\d{2}$/.test(record.month || '')) throw new Error('年月份格式不正確。');
@@ -194,6 +194,7 @@ const server = http.createServer(async (request, response) => {
         if (record.cathayDividends == null && record.yuantaDividends == null) output.cathayDividends = output.dividends;
         if (record.petExpenses == null) output.petExpenses = output.educationExpenses;
         if (record.personalInsuranceExpenses == null) output.personalInsuranceExpenses = output.insuranceExpenses;
+        if (record.cathayCardExpenses == null && record.fubonCardExpenses == null && record.otherCardExpenses == null && record.cashExpenses == null && record.accountExpenses == null) output.otherCardExpenses = output.livingExpenses;
         for (const field of noteFields) output[field] = typeof record[field] === 'string' ? record[field].trim() : '';
         return output;
       }).sort((a, b) => b.month.localeCompare(a.month));
@@ -212,9 +213,14 @@ const server = http.createServer(async (request, response) => {
     }
     try {
       const data = await readJson(request);
-      const fields = ['currentAge', 'retirementAge', 'lifeExpectancy', 'retirementMonthlySpend', 'preReturn', 'postReturn', 'inflation'];
+      const fields = ['currentAge', 'retirementAge', 'semiRetirementEndAge', 'lifeExpectancy', 'retirementMonthlySpend', 'annualTravelTrips', 'carBudget', 'emergencyCashReserve', 'unionInsuranceMonthly', 'laborPensionAccessAge', 'laborInsuranceBenefitAge', 'laborInsuranceMonthlyBenefit', 'childSupportUntilAge', 'childrenMonthlySupportAfterRetirement', 'childrenSupportUntilParentAge', 'childrenMilestoneReserve', 'childrenMilestoneAge', 'parentsMonthlySupport', 'parentSupportUntilAge', 'parentMedicalReserve', 'healthCareStartAge', 'healthCareMonthlyExpense', 'personalMedicalReserve', 'preReturn', 'postReturn', 'inflation'];
       const settings = Object.fromEntries(fields.map((field) => [field, Number(data.settings?.[field])]));
       if (Object.values(settings).some((value) => !Number.isFinite(value))) throw new Error('退休設定格式不正確。');
+      for (const field of ['child1BirthMonth', 'child2BirthMonth']) {
+        const value = data.settings?.[field];
+        if (!/^\d{4}-\d{2}$/.test(value || '')) throw new Error('小孩出生年月格式不正確。');
+        settings[field] = value;
+      }
       const output = { updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : new Date().toISOString(), settings };
       await fs.promises.writeFile(SETTINGS_PATH, JSON.stringify(output, null, 2) + '\n', 'utf8');
       sendJsonResponse(response).status(200).json({ ok: true });

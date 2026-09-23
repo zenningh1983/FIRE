@@ -6,6 +6,11 @@ import { clearGithubToken, loadGithubToken, loadState, saveGithubToken, saveStat
 let state;
 let toastTimer;
 let returnToCashflowRecords = false;
+let retirementAgePreview = null;
+let retirementAssessmentVisible = false;
+let retirementPreviewFrame = null;
+let settingsSyncTimer = null;
+let settingsSyncInFlight = false;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const money = new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 });
@@ -20,6 +25,11 @@ function parseNumber(value) {
 
 function currentYearMonth() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
+}
+
+function currentAgeFromBirthYear() {
+  const year = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Taipei', year: 'numeric' }).format(new Date()));
+  return year - 1983;
 }
 
 function shiftYearMonth(month, offset) {
@@ -71,44 +81,163 @@ async function unlockWithGithubToken(token) {
   await validateGithubToken(token);
   saveGithubToken(token);
   state = await loadState();
+  state.settings.currentAge = currentAgeFromBirthYear();
+  retirementAgePreview = Number(state.settings.retirementAge);
+  retirementAssessmentVisible = false;
   $('#githubLoginView').hidden = true;
   $('#appView').hidden = false;
   configureCashflowForm(currentYearMonth());
   setCashflowTab('income');
   render();
   route();
+  startSettingsBackgroundSync();
 }
 
 function route() {
-  const name = ['overview', 'assets', 'liabilities', 'cashflow', 'settings'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+  const name = ['overview', 'assets', 'liabilities', 'cashflow'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
   $$('.page').forEach((page) => { page.hidden = page.id !== `${name}Page`; });
   $$('.tabs a').forEach((link) => link.classList.toggle('active', link.dataset.route === name));
   if (name === 'liabilities') configureAnnualMortgageForm();
   if (name === 'cashflow') configureCashflowForm($('#cashflowForm').elements.month.value || currentYearMonth());
 }
 
-function metric(label, value, note, action = '') {
-  return `<article class="metric"><div class="metric-heading"><div class="label">${label}</div>${action}</div><div class="value">${value}</div><div class="note">${note}</div></article>`;
+function metric(label, value, note, action = '', formula = '') {
+  return `<article class="metric"><div class="metric-heading"><div class="label">${label}</div>${action}</div><div class="value">${value}</div><div class="note">${note}</div>${formula ? `<div class="formula">公式：${formula}</div>` : ''}</article>`;
+}
+
+const FIXED_RETIREMENT_RATES = { preReturn: 5, postReturn: 3, inflation: 2 };
+const overviewSettingFields = ['lifeExpectancy', 'retirementMonthlySpend', 'annualTravelTrips', 'carBudget', 'emergencyCashReserve', 'parentMedicalReserve', 'personalMedicalReserve', 'childrenMonthlySupportAfterRetirement', 'childrenMilestoneReserve', 'preReturn', 'postReturn', 'inflation'];
+
+function previewRetirementSettings() {
+  const form = $('#settingsForm');
+  const settings = { ...state.settings, currentAge: currentAgeFromBirthYear(), retirementAge: Number(retirementAgePreview ?? state.settings.retirementAge) };
+  overviewSettingFields.forEach((key) => {
+    const value = parseNumber(form.elements[key].value);
+    if (Number.isFinite(value)) settings[key] = value;
+  });
+  settings.laborPensionPayoutMode = form.elements.laborPensionPayoutMode.value || 'lump';
+  settings.laborInsurancePayoutMode = form.elements.laborInsurancePayoutMode.value || 'monthly';
+  Object.assign(settings, FIXED_RETIREMENT_RATES);
+  settings.semiRetirementEndAge = Math.max(settings.retirementAge, 65);
+  return settings;
+}
+
+function persistOverviewSettingsLocally(settings = previewRetirementSettings()) {
+  const updatedAt = new Date().toISOString();
+  state.settings = { ...settings };
+  state.settingsUpdatedAt = updatedAt;
+  state.settingsSyncPending = true;
+  saveState(state);
+}
+
+async function syncPendingSettings() {
+  if (!state?.settingsSyncPending || settingsSyncInFlight) return;
+  const settings = { ...state.settings };
+  const updatedAt = state.settingsUpdatedAt;
+  settingsSyncInFlight = true;
+  try {
+    await writeSettings(settings, updatedAt);
+    if (state.settingsUpdatedAt === updatedAt) {
+      state.settingsSyncPending = false;
+      saveState(state);
+    }
+  } catch (error) {
+    console.warn('Retirement settings background sync failed:', error);
+  } finally {
+    settingsSyncInFlight = false;
+  }
+}
+
+function startSettingsBackgroundSync() {
+  if (settingsSyncTimer) clearInterval(settingsSyncTimer);
+  settingsSyncTimer = setInterval(syncPendingSettings, 60000);
 }
 
 function renderOverview() {
-  const plan = calculatePlan(state);
+  const previewSettings = previewRetirementSettings();
+  const minimumAge = Math.ceil(Number(previewSettings.currentAge || 0)) + 1;
+  const planningMaximumAge = 110;
+  let lifeExpectancy = Math.min(planningMaximumAge, Math.max(minimumAge + 1, Math.round(Number(previewSettings.lifeExpectancy || 90))));
+  const maximumAge = Math.max(minimumAge, lifeExpectancy - 1);
+  const selectedAge = Math.min(maximumAge, Math.max(minimumAge, Number(retirementAgePreview ?? state.settings.retirementAge)));
+  lifeExpectancy = Math.max(selectedAge + 1, lifeExpectancy);
+  retirementAgePreview = selectedAge;
+  previewSettings.lifeExpectancy = lifeExpectancy;
+  $('#settingsForm').elements.lifeExpectancy.value = lifeExpectancy;
+  const previewState = { ...state, settings: { ...previewSettings, retirementAge: selectedAge, lifeExpectancy } };
+  const plan = calculatePlan(previewState);
+  $('#retirementAgeSlider').min = minimumAge;
+  $('#retirementAgeSlider').max = maximumAge;
+  $('#retirementAgeSlider').value = selectedAge;
+  $('#retirementAgePreview').textContent = `${selectedAge} 歲`;
+  $('#retirementAgeMin').textContent = `${minimumAge} 歲`;
+  $('#retirementAgeMax').textContent = `${maximumAge} 歲`;
+  $('#lifeExpectancySlider').min = selectedAge + 1;
+  $('#lifeExpectancySlider').max = planningMaximumAge;
+  $('#lifeExpectancySlider').value = lifeExpectancy;
+  $('#lifeExpectancyPreview').textContent = `${lifeExpectancy} 歲`;
+  $('#lifeExpectancyMin').textContent = `${selectedAge + 1} 歲`;
+  $('#lifeExpectancyMax').textContent = `${planningMaximumAge} 歲`;
+  $('#retirementRateAssumptions').textContent = `試算假設：退休前年化報酬率 ${FIXED_RETIREMENT_RATES.preReturn}%、退休後年化報酬率 ${FIXED_RETIREMENT_RATES.postReturn}%、預估通膨率 ${FIXED_RETIREMENT_RATES.inflation}%。`;
+  const investmentNote = plan.gap >= 0
+    ? `平均月結餘 ${money.format(plan.availableMonthlyInvestment)}，配息持續再投入`
+    : `平均月結餘 ${money.format(plan.availableMonthlyInvestment)}；原訂年齡不足則調整退休年齡`;
+  const partTimeNote = plan.partTimeIncomeGap > 0
+    ? `原訂年齡資金需求為 ${money.format(plan.requiredSemiIncome)}，仍有 ${money.format(plan.partTimeIncomeGap)} 缺口`
+    : `足以支應原訂年齡所需的 ${money.format(plan.requiredSemiIncome)}`;
   $('#metrics').innerHTML = [
-    metric('目前淨資產', money.format(plan.assets), '帳戶餘額＋持股市值＋勞退－剩餘房貸'),
-    metric('退休目標資產', money.format(plan.target), '以現在購買力估算'),
-    metric('每月建議投入', money.format(plan.requiredMonthly), `距退休 ${plan.yearsToRetire} 年`),
-    metric('55 歲預估資產', money.format(plan.projected), plan.projected >= plan.target ? '可達成目標' : '仍有資金缺口')
+    metric('目前淨資產', money.format(plan.assets), '帳戶餘額＋持股市值＋勞退－剩餘房貸', '', '帳戶餘額＋持股市值＋勞退專戶－剩餘房貸'),
+    metric('半退休目標資產', money.format(plan.target), '含家庭、健康、保費與退休給付', '', '逐月反推可支付至規劃年齡，且全程保留各項預備金的最低資產'),
+    metric(`${selectedAge} 歲預估資產`, money.format(plan.projected), plan.projected >= plan.target ? '可達成目標' : '仍有資金缺口', '', '目前可投資資產＋每月投入的退休前實質複利＋屆時勞退'),
+    metric('半退休後預估兼職月收入', money.format(plan.estimatedPartTimeIncome), partTimeNote, '', '依個人職能設定的保守基準＝每月 25,000'),
+    metric('半退休投資月收益', money.format(plan.projectedInvestmentIncome), '以半退休時可投資資產與退休後實質報酬率估算', '', '（半退休可投資資產－預備金）× 退休後實質月報酬率')
   ].join('');
+  const investmentGap = Math.max(0, -plan.gap);
+  const retirementAction = plan.configuredPlanFeasible
+    ? `<strong>維持 ${selectedAge} 歲</strong><small>依目前條件可行</small>`
+    : plan.suggestedRetirementAge != null
+      ? `<strong>調整至 ${plan.suggestedRetirementAge} 歲</strong><small>若維持 ${selectedAge} 歲，每月需再投入 ${money.format(investmentGap)}</small>`
+      : `<strong>需調整計畫</strong><small>降低支出、增加投入或延後半退休</small>`;
+  const semiRetirementAction = plan.partTimeIncomeGap > 0
+    ? `<strong>準備兼職 ${money.format(plan.estimatedPartTimeIncome)}／月</strong><small>${selectedAge} 歲半退休後開始；執行後仍缺 ${money.format(plan.partTimeIncomeGap)}／月</small>`
+    : `<strong>準備兼職 ${money.format(plan.estimatedPartTimeIncome)}／月</strong><small>${selectedAge} 歲半退休後開始；預估可支應收入需求</small>`;
+  $('#actionItems').innerHTML = `<article class="action-item"><span>現在</span><strong>每月投入 ${money.format(plan.reasonableMonthlyInvestment)}</strong><small>${investmentNote}</small><div class="formula">公式：（平均總收入〔含配息〕－平均總支出）× 90%</div></article><article class="action-item"><span>退休時機</span>${retirementAction}</article><article class="action-item"><span>半退休後待辦</span>${semiRetirementAction}</article>`;
   $('#progressText').textContent = `${plan.progress.toFixed(0)}%`;
-  $('#progressBar').style.width = `${plan.progress}%`;
-  $('#targetAgeBadge').textContent = `${state.settings.retirementAge} 歲`;
+  $('#progressRing').style.setProperty('--progress', `${plan.progress}%`);
+  $('#targetAgeBadge').textContent = `${selectedAge} 歲`;
   $('#currentAssetsLabel').textContent = `目前 ${money.format(plan.assets)}`;
   $('#targetAssetsLabel').textContent = `目標 ${money.format(plan.target)}`;
-  $('#updatedAt').textContent = `更新於 ${new Date().toLocaleDateString('zh-TW')}`;
-  const recommendation = plan.gap >= 0
-    ? ['每月可投入', money.format(plan.averageNet), '目前現金流足以支應退休投入目標']
-    : ['每月仍需補足', money.format(Math.abs(plan.gap)), '可調整支出、收入或退休時間'];
-  $('#recommendations').innerHTML = `<div class="recommendation"><span>${recommendation[0]}</span><strong>${recommendation[1]}</strong></div><div class="recommendation"><span>狀態</span><strong>${recommendation[2]}</strong></div>`;
+  const overviewUpdatedAt = Math.max(...[
+    state.assetsUpdatedAt, state.cashflowsUpdatedAt, state.settingsUpdatedAt, state.mortgage?.updatedAt
+  ].map((value) => Date.parse(value || '') || 0));
+  $('#updatedAt').textContent = overviewUpdatedAt ? `更新於 ${new Date(overviewUpdatedAt).toLocaleString('zh-TW')}` : '尚未建立資料';
+  const planStatus = plan.configuredPlanFeasible ? `${selectedAge} 歲計畫可行` : `${selectedAge} 歲計畫目前不可行`;
+  const timing = plan.suggestedRetirementAge == null
+    ? '目前條件下無可行年齡'
+    : `${plan.suggestedRetirementAge} 歲`;
+  const spendingControl = plan.requiredMonthlySpendingReduction == null
+    ? '只降低生活費仍不足，需搭配延後退休或增加資產'
+    : plan.requiredMonthlySpendingReduction > 1
+      ? `每月降低 ${money.format(plan.requiredMonthlySpendingReduction)}`
+      : '不需降低生活費';
+  const laborPensionPlan = plan.laborPensionPayoutMode === 'monthly'
+    ? `<strong>按月領：約 ${money.format(plan.laborPensionEstimatedMonthlyBenefit)}／月</strong><small>60 歲可請領；暫以 ${plan.laborPensionMonthlyPaymentMonths / 12} 年、年金利率 ${(plan.laborPensionAnnuityAnnualRate * 100).toFixed(1)}% 估算，實際依勞保局公告計算。</small>`
+    : `<strong>一次領：約 ${money.format(plan.laborPensionEstimatedLumpSum)}</strong><small>60 歲可請領；屆時整筆納入可運用退休資產。</small>`;
+  const laborInsurancePlan = plan.laborInsurancePayoutMode === 'monthly'
+    ? `<strong>按月領：約 ${money.format(plan.laborInsuranceMonthlyBenefit)}／月</strong><small>65 歲起領；依目前薪資與預估投保年資，採較高年金公式估算。</small>`
+    : `<strong>一次領：約 ${money.format(plan.laborInsuranceLumpSumBenefit)}</strong><small>65 歲估算；平均投保薪資 ${money.format(plan.estimatedInsuredSalary)} × ${plan.laborInsuranceBenefitMonths.toFixed(1)} 個月。實際資格與金額以勞保局核定為準。</small>`;
+  $('#retirementBenefitAssumption').innerHTML = `<div><span>勞退</span>${laborPensionPlan}</div><div><span>勞保</span>${laborInsurancePlan}</div>`;
+  $('#vehiclePlanAssumption').innerHTML = plan.carBudget > 0
+    ? `<div><span>代步車規劃</span><strong>購車 ${money.format(plan.carBudget)}</strong></div><small>半退休後開始，分 ${plan.carLoanMonths / 12} 年本息平均攤還，年利率 ${(plan.carLoanAnnualRate * 100).toFixed(0)}%，預估每月 ${money.format(plan.carLoanMonthlyPayment)}。</small>`
+    : `<div><span>代步車規劃</span><strong>不買車</strong></div><small>若選擇購車，試算預設於半退休後開始，分 ${plan.carLoanMonths / 12} 年本息平均攤還，年利率 ${(plan.carLoanAnnualRate * 100).toFixed(0)}%。</small>`;
+  $('#recommendations').innerHTML = `<div class="recommendation"><span>原訂計畫狀態</span><strong>${planStatus}</strong></div><div class="recommendation"><span>平均月結餘／合理投入</span><strong>${money.format(plan.availableMonthlyInvestment)}／${money.format(plan.reasonableMonthlyInvestment)}</strong></div><div class="recommendation"><span>若維持原訂年齡：每月投資需再增加</span><strong>${money.format(Math.max(0, -plan.gap))}</strong></div><div class="recommendation"><span>若只調整半退休生活費</span><strong>${spendingControl}</strong></div><div class="recommendation"><span>半退休兼職合理估計／資金需求</span><strong>${money.format(plan.estimatedPartTimeIncome)}／${money.format(plan.requiredSemiIncome)}</strong></div><div class="recommendation"><span>維持生活品質的最早建議年齡</span><strong>${timing}</strong></div>`;
+  const scenarios = plan.retirementScenarios || [];
+  $('#retirementScenarios').innerHTML = scenarios.length ? scenarios.map((scenario, index) => {
+    const investmentGap = Math.max(0, scenario.requiredMonthlyInvestment - scenario.reasonableMonthlyInvestment);
+    const incomeGap = Math.max(0, scenario.requiredSemiIncome - plan.estimatedPartTimeIncome);
+    const label = scenario.feasible ? '穩健方案' : (index === 0 ? '折衷方案' : '調整方案');
+    return `<article class="scenario-card"><div class="scenario-heading"><div><p class="caption">${label}</p><h4>${scenario.age} 歲半退休</h4></div><span class="scenario-status ${scenario.feasible ? 'feasible' : ''}">${scenario.feasible ? '目前條件可行' : '仍有資金缺口'}</span></div><div class="scenario-values"><div><span>預估資產</span><strong>${money.format(scenario.projectedAssets)}</strong></div><div><span>合理／所需月投入</span><strong>${money.format(scenario.reasonableMonthlyInvestment)}／${money.format(scenario.requiredMonthlyInvestment)}</strong></div><div><span>每月投資缺口</span><strong>${money.format(investmentGap)}</strong></div><div><span>半退休兼職需求</span><strong>${money.format(scenario.requiredSemiIncome)}</strong></div><div><span>合理兼職後缺口</span><strong>${money.format(incomeGap)}</strong></div><div><span>投資月收益</span><strong>${money.format(scenario.investmentIncome)}</strong></div></div></article>`;
+  }).join('') : '<p class="empty">目前設定範圍內找不到可行替代年齡，需先調整生活費、旅遊、車款或預備金。</p>';
 }
 
 function actionButtons(type, id) {
@@ -299,6 +428,10 @@ function cashflowValue(record, field) {
   }
   if (field === 'petExpenses' && record.petExpenses == null) return Number(record.educationExpenses) || 0;
   if (field === 'personalInsuranceExpenses' && record.personalInsuranceExpenses == null) return Number(record.insuranceExpenses) || 0;
+  if (field === 'otherCardExpenses' && record.cathayCardExpenses == null && record.fubonCardExpenses == null
+    && record.otherCardExpenses == null && record.cashExpenses == null && record.accountExpenses == null) {
+    return Number(record.livingExpenses) || 0;
+  }
   return Number(record[field]) || 0;
 }
 
@@ -330,7 +463,9 @@ function renderCashflows() {
   const body = $('#cashflowTable tbody');
   body.replaceChildren(...visibleRecords.map((item) => {
     const row = document.createElement('tr');
-    row.innerHTML = `<td>${item.month}</td><td class="number">${money.format(item.netSalary || 0)}</td><td class="number tax-record-value">${amountWithNote(item, 'bonus', 'bonusNote')}</td><td class="number">${money.format(cashflowValue(item, 'cathayDividends'))}</td><td class="number">${money.format(cashflowValue(item, 'yuantaDividends'))}</td><td class="number">${money.format(item.fixedExpenses)}</td><td class="number">${money.format(item.livingExpenses)}</td><td class="number">${money.format(cashflowValue(item, 'personalInsuranceExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'petExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'petInsuranceExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'propertyLandTax'))}</td><td class="number">${money.format(cashflowValue(item, 'comprehensiveIncomeTax'))}</td><td class="number tax-record-value">${amountWithNote(item, 'otherTaxes', 'otherTaxesNote')}</td><td class="number">${money.format(item.totalExpense)}</td><td class="number">${money.format(item.net)}</td><td><div class="row-actions"><button data-edit-income="${item.month}">收入</button><button data-edit-expense="${item.month}">支出</button><button data-delete="cashflow" data-id="${item.month}">刪除</button></div></td>`;
+    const totalTaxes = cashflowValue(item, 'propertyLandTax') + cashflowValue(item, 'comprehensiveIncomeTax') + cashflowValue(item, 'otherTaxes');
+    const totalChildren = cashflowValue(item, 'petExpenses') + cashflowValue(item, 'petInsuranceExpenses');
+    row.innerHTML = `<td>${item.month}</td><td class="number">${money.format(item.netSalary || 0)}</td><td class="number tax-record-value">${amountWithNote(item, 'bonus', 'bonusNote')}</td><td class="number">${money.format(cashflowValue(item, 'cathayDividends'))}</td><td class="number">${money.format(cashflowValue(item, 'yuantaDividends'))}</td><td class="number">${money.format(item.fixedExpenses)}</td><td class="number">${money.format(cashflowValue(item, 'cathayCardExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'fubonCardExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'otherCardExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'cashExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'accountExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'personalInsuranceExpenses'))}</td><td class="number">${money.format(totalChildren)}</td><td class="number">${money.format(totalTaxes)}</td><td class="number">${money.format(item.totalExpense)}</td><td class="number">${money.format(item.net)}</td><td><div class="row-actions"><button data-edit-cashflow="${item.month}">修改</button></div></td>`;
     return row;
   }));
   $('#cashflowEmpty').hidden = state.cashflows.length > 0;
@@ -345,7 +480,7 @@ function renderCashflows() {
   }, 0) / records.length;
   const averages = Object.fromEntries([
     'netSalary', 'bonus', 'cathayDividends', 'yuantaDividends', 'totalIncome', 'mortgage', 'utilities', 'internet',
-    'managementFee', 'livingExpenses', 'personalInsuranceExpenses', 'petExpenses', 'petInsuranceExpenses',
+    'managementFee', 'cathayCardExpenses', 'fubonCardExpenses', 'otherCardExpenses', 'cashExpenses', 'accountExpenses', 'personalInsuranceExpenses', 'petExpenses', 'petInsuranceExpenses',
     'propertyLandTax', 'comprehensiveIncomeTax', 'otherTaxes', 'totalExpense', 'net'
   ].map((field) => [field, average(field)]));
   const period = records.length === 1 ? records[0].month : `${records.at(-1).month} ～ ${records[0].month}`;
@@ -362,14 +497,16 @@ function renderCashflows() {
   ].join('');
   $('#averageExpenseBreakdown').innerHTML = [
     breakdown('房貸', averages.mortgage), breakdown('水電瓦斯', averages.utilities), breakdown('電信／網路', averages.internet),
-    breakdown('管理費', averages.managementFee), breakdown('生活開銷', averages.livingExpenses),
+    breakdown('管理費', averages.managementFee), breakdown('國泰信用卡', averages.cathayCardExpenses),
+    breakdown('富邦信用卡', averages.fubonCardExpenses), breakdown('其他信用卡', averages.otherCardExpenses),
+    breakdown('現金支出', averages.cashExpenses), breakdown('帳戶支出', averages.accountExpenses),
     breakdown('個人保險', averages.personalInsuranceExpenses), breakdown('兩隻花費', averages.petExpenses),
     breakdown('兩隻保險', averages.petInsuranceExpenses), breakdown('房屋／地價稅', averages.propertyLandTax),
     breakdown('綜合所得稅', averages.comprehensiveIncomeTax), breakdown('其他稅務', averages.otherTaxes)
   ].join('');
 }
 
-const cashflowAmountFields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction', 'bonus', 'cathayDividends', 'yuantaDividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'livingExpenses', 'personalInsuranceExpenses', 'petExpenses', 'petInsuranceExpenses', 'propertyLandTax', 'comprehensiveIncomeTax', 'otherTaxes'];
+const cashflowAmountFields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction', 'bonus', 'cathayDividends', 'yuantaDividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'cathayCardExpenses', 'fubonCardExpenses', 'otherCardExpenses', 'cashExpenses', 'accountExpenses', 'personalInsuranceExpenses', 'petExpenses', 'petInsuranceExpenses', 'propertyLandTax', 'comprehensiveIncomeTax', 'otherTaxes'];
 const cashflowNoteFields = ['bonusNote', 'otherTaxesNote'];
 
 function updateMonthlySalaryTotal() {
@@ -388,11 +525,13 @@ function configureCashflowForm(month = currentYearMonth()) {
   const defaults = { ...state.cashflowDefaults, mortgage: Number(state.mortgage?.monthlyPayment || 0) };
   cashflowAmountFields.forEach((field) => {
     const carryForward = field === 'mortgage' || field === 'managementFee';
-    const needsLegacyFallback = field === 'cathayDividends' || field === 'yuantaDividends' || field === 'petExpenses' || field === 'personalInsuranceExpenses';
+    const needsLegacyFallback = field === 'cathayDividends' || field === 'yuantaDividends' || field === 'petExpenses'
+      || field === 'personalInsuranceExpenses' || field === 'otherCardExpenses';
     const existingValue = record ? (needsLegacyFallback ? cashflowValue(record, field) : record[field]) : null;
     form.elements[field].value = existingValue ?? (carryForward ? fixedExpenseForMonth(field, shiftYearMonth(month, -1), defaults[field]) : defaults[field] ?? 0);
   });
   cashflowNoteFields.forEach((field) => { form.elements[field].value = record?.[field] ?? ''; });
+  $('#deleteCashflowRecord').hidden = !record;
   updateMonthlySalaryTotal();
   setMessage($('#cashflowMessage'), record ? '此月份已有紀錄，送出後會直接更新。' : '');
 }
@@ -401,7 +540,9 @@ function setCashflowTab(name) {
   $$('[data-cashflow-tab]').forEach((button) => button.classList.toggle('active', button.dataset.cashflowTab === name));
   $('#cashflowIncomePanel').hidden = name !== 'income';
   $('#cashflowExpensePanel').hidden = name !== 'expense';
-  $('#cashflowEntryTitle').textContent = name === 'income' ? '新增收入' : '新增支出';
+  const month = $('#cashflowForm').elements.month.value;
+  const isExisting = state.cashflows.some((item) => item.month === month);
+  $('#cashflowEntryTitle').textContent = isExisting ? `修改 ${month} 每月收支` : (name === 'income' ? '新增收入' : '新增支出');
 }
 
 function openCashflowEntry(kind, month = currentYearMonth(), returnToRecords = false) {
@@ -411,17 +552,75 @@ function openCashflowEntry(kind, month = currentYearMonth(), returnToRecords = f
   $('#cashflowEntryDialog').showModal();
 }
 
+function setCompactChoice(form, key, value) {
+  const buttons = $$(`[data-setting="${key}"]`, form);
+  if (!buttons.length) return false;
+  const selected = buttons.find((button) => button.dataset.value === String(value))
+    || buttons.reduce((closest, button) => Math.abs(Number(button.dataset.value) - Number(value)) < Math.abs(Number(closest.dataset.value) - Number(value)) ? button : closest);
+  form.elements[key].value = selected.dataset.value;
+  buttons.forEach((button) => {
+    const active = button === selected;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  return true;
+}
+
 function renderSettings() {
+  state.settings.currentAge = currentAgeFromBirthYear();
   const form = $('#settingsForm');
-  Object.entries(state.settings).forEach(([key, value]) => { if (form.elements[key]) form.elements[key].value = value; });
+  Object.entries(state.settings).forEach(([key, value]) => {
+    const field = form.elements[key];
+    if (!field) return;
+    if (setCompactChoice(form, key, value)) return;
+    if (field.tagName === 'SELECT') {
+      const options = [...field.options];
+      const selected = options.find((option) => option.value === String(value))
+        || options.reduce((closest, option) => Math.abs(Number(option.value) - Number(value)) < Math.abs(Number(closest.value) - Number(value)) ? option : closest);
+      field.value = selected.value;
+      return;
+    }
+    field.value = value;
+  });
+  Object.entries(FIXED_RETIREMENT_RATES).forEach(([key, value]) => { form.elements[key].value = value; });
 }
 
 function render() {
+  renderSettings();
   renderOverview();
   renderAssets();
   renderMortgage();
   renderCashflows();
-  renderSettings();
+}
+
+async function generateRetirementAssessment() {
+  const form = $('#settingsForm');
+  if (!form.reportValidity()) return;
+  const selectedAge = Number(retirementAgePreview);
+  const nextSettings = { ...previewRetirementSettings(), retirementAge: selectedAge, semiRetirementEndAge: Math.max(selectedAge, 65) };
+  if (overviewSettingFields.some((key) => !Number.isFinite(parseNumber(form.elements[key].value)))) {
+    setMessage($('#retirementAgeMessage'), '請確認所有設定都是有效數值。', true);
+    return;
+  }
+  if (!Number.isFinite(selectedAge) || selectedAge <= nextSettings.currentAge || selectedAge >= nextSettings.lifeExpectancy) {
+    setMessage($('#retirementAgeMessage'), '請選擇介於目前年齡與規劃年齡之間的半退休年齡。', true);
+    return;
+  }
+  if (nextSettings.retirementMonthlySpend < 0 || nextSettings.carBudget < 0 || nextSettings.carBudget > 1200000
+    || nextSettings.emergencyCashReserve < 50000 || nextSettings.emergencyCashReserve > 100000
+    || !Number.isInteger(nextSettings.annualTravelTrips) || nextSettings.annualTravelTrips < 0
+    || nextSettings.parentMedicalReserve < 0 || nextSettings.personalMedicalReserve < 0
+    || nextSettings.childrenMonthlySupportAfterRetirement < 0 || nextSettings.childrenMilestoneReserve < 0
+    || nextSettings.preReturn < -20 || nextSettings.preReturn > 30 || nextSettings.postReturn < -20 || nextSettings.postReturn > 30
+    || nextSettings.inflation < -5 || nextSettings.inflation > 20) {
+    setMessage($('#retirementAgeMessage'), '請確認設定範圍；緊急預備金需為 5～10 萬，代步車不可超過 120 萬。', true);
+    return;
+  }
+  persistOverviewSettingsLocally(nextSettings);
+  retirementAssessmentVisible = true;
+  render();
+  setMessage($('#retirementAgeMessage'), '');
+  $('#retirementAssessmentDialog').showModal();
 }
 
 async function saveCashflow(form) {
@@ -435,9 +634,10 @@ async function saveCashflow(form) {
   const dividends = values.cathayDividends + values.yuantaDividends;
   const totalIncome = netSalary + values.bonus + dividends;
   const fixedExpenses = values.mortgage + values.utilities + values.internet + values.managementFee;
-  const totalExpense = fixedExpenses + values.livingExpenses + values.personalInsuranceExpenses + values.petExpenses
+  const livingExpenses = values.cathayCardExpenses + values.fubonCardExpenses + values.otherCardExpenses + values.cashExpenses + values.accountExpenses;
+  const totalExpense = fixedExpenses + livingExpenses + values.personalInsuranceExpenses + values.petExpenses
     + values.petInsuranceExpenses + values.propertyLandTax + values.comprehensiveIncomeTax + values.otherTaxes;
-  const record = { month: form.elements.month.value, ...values, ...notes, netSalary, dividends, totalIncome, fixedExpenses, totalExpense, net: totalIncome - totalExpense };
+  const record = { month: form.elements.month.value, ...values, ...notes, netSalary, dividends, totalIncome, fixedExpenses, livingExpenses, totalExpense, net: totalIncome - totalExpense };
   const records = state.cashflows.filter((item) => item.month !== record.month);
   records.push(record);
   records.sort((a, b) => b.month.localeCompare(a.month));
@@ -490,11 +690,25 @@ async function saveAssetSummary(form) {
   finally { setBusy(submit, false); }
 }
 
+function requestDeleteCashflow(month) {
+  const record = state.cashflows.find((item) => item.month === month);
+  if (!record) return;
+  const dialog = $('#deleteCashflowDialog');
+  dialog.dataset.month = month;
+  $('#deleteCashflowDescription').textContent = `即將清除 ${month} 的整月收支資料：`;
+  $('#deleteCashflowIncome').textContent = money.format(record.totalIncome || 0);
+  $('#deleteCashflowExpense').textContent = money.format(record.totalExpense || 0);
+  $('#deleteCashflowNet').textContent = money.format(record.net || 0);
+  dialog.showModal();
+}
+
 async function deleteCashflow(month) {
   const record = state.cashflows.find((item) => item.month === month);
-  if (!record || !confirm(`確定刪除 ${month} 的收支紀錄？`)) return;
+  if (!record) return;
   const records = state.cashflows.filter((item) => item.month !== month);
   const updatedAt = new Date().toISOString();
+  const button = $('#confirmDeleteCashflow');
+  setBusy(button, true);
   try {
     await writeCashflows(records, updatedAt);
     state.cashflows = records;
@@ -502,11 +716,68 @@ async function deleteCashflow(month) {
     saveState(state);
     render();
     configureCashflowForm(currentYearMonth());
-    toast('已刪除');
+    $('#deleteCashflowDialog').close();
+    $('#cashflowEntryDialog').close();
+    if (returnToCashflowRecords) $('#cashflowRecordsDialog').showModal();
+    returnToCashflowRecords = false;
+    toast(`已清除 ${month} 全部紀錄`);
   } catch (error) { toast(error.message, true); }
+  finally { setBusy(button, false); }
 }
 
 window.addEventListener('hashchange', route);
+$('#retirementAgeSlider').addEventListener('input', (event) => {
+  retirementAgePreview = Number(event.currentTarget.value);
+  retirementAssessmentVisible = false;
+  $('#retirementAgePreview').textContent = `${retirementAgePreview} 歲`;
+  setMessage($('#retirementAgeMessage'), '');
+  persistOverviewSettingsLocally();
+  if (retirementPreviewFrame) cancelAnimationFrame(retirementPreviewFrame);
+  retirementPreviewFrame = requestAnimationFrame(() => {
+    retirementPreviewFrame = null;
+    renderOverview();
+  });
+});
+$('#lifeExpectancySlider').addEventListener('input', (event) => {
+  const lifeExpectancy = Number(event.currentTarget.value);
+  $('#settingsForm').elements.lifeExpectancy.value = lifeExpectancy;
+  retirementAssessmentVisible = false;
+  $('#lifeExpectancyPreview').textContent = `${lifeExpectancy} 歲`;
+  setMessage($('#retirementAgeMessage'), '');
+  persistOverviewSettingsLocally();
+  if (retirementPreviewFrame) cancelAnimationFrame(retirementPreviewFrame);
+  retirementPreviewFrame = requestAnimationFrame(() => {
+    retirementPreviewFrame = null;
+    renderOverview();
+  });
+});
+$('#settingsForm').addEventListener('input', () => {
+  retirementAssessmentVisible = false;
+  setMessage($('#retirementAgeMessage'), '');
+  persistOverviewSettingsLocally();
+  if (retirementPreviewFrame) cancelAnimationFrame(retirementPreviewFrame);
+  retirementPreviewFrame = requestAnimationFrame(() => {
+    retirementPreviewFrame = null;
+    renderOverview();
+  });
+});
+$('#settingsForm').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-setting]');
+  if (!button) return;
+  setCompactChoice(event.currentTarget, button.dataset.setting, button.dataset.value);
+  event.currentTarget.elements[button.dataset.setting].dispatchEvent(new Event('input', { bubbles: true }));
+});
+$('#toggleOverviewSettings').addEventListener('click', (event) => {
+  const button = event.currentTarget;
+  const panel = $('#overviewSettingsPanel');
+  const expanded = button.getAttribute('aria-expanded') !== 'true';
+  button.setAttribute('aria-expanded', String(expanded));
+  const label = expanded ? '收合退休設定' : '展開退休設定';
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  panel.hidden = !expanded;
+});
+$('#generateRetirementPlan').addEventListener('click', generateRetirementAssessment);
 $('[data-cashflow-tab="income"]').closest('.section-tabs').addEventListener('click', (event) => {
   const button = event.target.closest('[data-cashflow-tab]');
   if (button) setCashflowTab(button.dataset.cashflowTab);
@@ -515,6 +786,8 @@ $('#assetForm').addEventListener('submit', (event) => { event.preventDefault(); 
 $('#accountBalancesForm').addEventListener('submit', (event) => { event.preventDefault(); saveAccountBalances(event.currentTarget); });
 $('#cashflowForm').addEventListener('submit', (event) => { event.preventDefault(); saveCashflow(event.currentTarget); });
 $('#cashflowForm').elements.month.addEventListener('change', (event) => configureCashflowForm(event.currentTarget.value));
+$('#deleteCashflowRecord').addEventListener('click', () => requestDeleteCashflow($('#cashflowForm').elements.month.value));
+$('#confirmDeleteCashflow').addEventListener('click', () => deleteCashflow($('#deleteCashflowDialog').dataset.month));
 $('#openIncomeDialog').addEventListener('click', () => openCashflowEntry('income'));
 $('#openExpenseDialog').addEventListener('click', () => openCashflowEntry('expense'));
 $('#openMortgageHistoryDialog').addEventListener('click', () => $('#mortgageHistoryDialog').showModal());
@@ -578,6 +851,8 @@ $('#githubSettingsForm').addEventListener('submit', async (event) => {
   finally { setBusy(button, false); }
 });
 $('#clearGithubToken').addEventListener('click', () => {
+  if (settingsSyncTimer) clearInterval(settingsSyncTimer);
+  settingsSyncTimer = null;
   clearGithubToken();
   $('#githubSettingsForm').reset();
   $('#githubLoginForm').reset();
@@ -603,32 +878,7 @@ $('#tenureForm').addEventListener('submit', async (event) => {
   } catch (error) { setMessage($('#tenureMessage'), error.message, true); }
   finally { setBusy(button, false); }
 });
-$('#settingsForm').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const values = Object.fromEntries(Object.keys(state.settings).map((key) => [key, key === 'currentAge' ? evaluateNumberExpression(form.elements[key].value) : parseNumber(form.elements[key].value)]));
-  if (Object.values(values).some((value) => !Number.isFinite(value))) {
-    setMessage($('#settingsMessage'), '請確認所有欄位都是有效數值。', true); return;
-  }
-  if (values.currentAge < 18 || values.retirementAge <= values.currentAge || values.lifeExpectancy <= values.retirementAge) {
-    setMessage($('#settingsMessage'), '退休年齡需大於目前年齡，規劃年齡需大於退休年齡。', true); return;
-  }
-  if (values.retirementMonthlySpend < 0 || values.preReturn < -20 || values.preReturn > 30 || values.postReturn < -20 || values.postReturn > 30 || values.inflation < -5 || values.inflation > 20) {
-    setMessage($('#settingsMessage'), '請確認金額與百分比位於合理範圍。', true); return;
-  }
-  Object.assign(state.settings, values);
-  const button = $('button[type="submit"]', form);
-  const updatedAt = new Date().toISOString();
-  setBusy(button, true);
-  setMessage($('#settingsMessage'), '正在寫入 JSON…');
-  try {
-    await writeSettings(state.settings, updatedAt);
-    state.settingsUpdatedAt = updatedAt;
-    saveState(state); render(); setMessage($('#settingsMessage'), '已更新 data/retirement-settings.json');
-  } catch (error) {
-    setMessage($('#settingsMessage'), error.message, true);
-  } finally { setBusy(button, false); }
-});
+$('#settingsForm').addEventListener('submit', (event) => event.preventDefault());
 
 $('#mortgageForm').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -693,17 +943,6 @@ $('#mortgageMetrics').addEventListener('click', async (event) => {
   finally { setBusy(button, false); }
 });
 
-$('#settingsForm').elements.currentAge.addEventListener('keydown', (event) => {
-  if (event.key !== 'Enter') return;
-  event.preventDefault();
-  const age = evaluateNumberExpression(event.currentTarget.value);
-  if (!Number.isFinite(age) || age < 0 || age > 120) {
-    setMessage($('#settingsMessage'), '請輸入有效的年齡算式，例如：今年-1983。', true); return;
-  }
-  event.currentTarget.value = String(Math.floor(age));
-  setMessage($('#settingsMessage'), `已計算為 ${Math.floor(age)} 歲`);
-});
-
 function enableAmountCalculations(formSelector, messageSelector) {
   $$(`${formSelector} input[inputmode="decimal"]`).forEach((input) => input.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
@@ -733,15 +972,11 @@ enableAmountCalculations('#cashflowForm', '#cashflowMessage');
   });
 });
 document.addEventListener('click', (event) => {
-  const editIncome = event.target.closest('[data-edit-income]');
-  const editExpense = event.target.closest('[data-edit-expense]');
-  if (editIncome || editExpense) {
-    const button = editIncome || editExpense;
+  const editCashflow = event.target.closest('[data-edit-cashflow]');
+  if (editCashflow) {
     $('#cashflowRecordsDialog').close();
-    openCashflowEntry(editIncome ? 'income' : 'expense', editIncome ? button.dataset.editIncome : button.dataset.editExpense, true);
+    openCashflowEntry('income', editCashflow.dataset.editCashflow, true);
   }
-  const remove = event.target.closest('[data-delete]');
-  if (remove?.dataset.delete === 'cashflow') deleteCashflow(remove.dataset.id);
 });
 
 $('#appVersion').textContent = CONFIG.appVersion;

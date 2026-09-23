@@ -29,22 +29,61 @@
       <a href="#cashflow" data-route="cashflow">每月收支</a>
       <a href="#assets" data-route="assets">資產</a>
       <a href="#liabilities" data-route="liabilities">負債</a>
-      <a href="#settings" data-route="settings">退休設定</a>
     </nav>
 
     <main class="content">
       <section id="overviewPage" class="page">
-        <div class="page-heading"><div><p class="eyebrow">RETIREMENT OVERVIEW</p><h2>距離自由，還有多遠？</h2></div><span id="updatedAt" class="muted"></span></div>
-        <div id="metrics" class="metric-grid"></div>
-        <section class="card progress-card">
-          <div class="card-heading"><div><p class="caption">退休準備進度</p><strong id="progressText">0%</strong></div><span id="targetAgeBadge" class="badge">55 歲</span></div>
-          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-          <div class="progress-labels"><span id="currentAssetsLabel"></span><span id="targetAssetsLabel"></span></div>
+        <div class="page-heading"><div><p class="eyebrow">RETIREMENT OVERVIEW</p><h2>距離自由，還有多遠？</h2><span id="updatedAt" class="muted updated-under-title"></span></div></div>
+        <section class="card retirement-age-control">
+          <div class="retirement-planning-heading"><div><p class="caption">RETIREMENT PLAN</p><h3>退休年齡規劃</h3></div><button id="generateRetirementPlan" class="button primary" type="button">產生計畫評估</button></div>
+          <div class="retirement-slider-grid">
+            <div class="retirement-slider-field">
+              <div class="retirement-age-control-heading"><h4>半退休年齡</h4><output id="retirementAgePreview">55 歲</output></div>
+              <input id="retirementAgeSlider" type="range" step="1" aria-label="選擇半退休年齡">
+              <div class="retirement-age-scale"><span id="retirementAgeMin"></span><span id="retirementAgeMax"></span></div>
+            </div>
+            <div class="retirement-slider-field">
+              <div class="retirement-age-control-heading"><h4>規劃至幾歲</h4><output id="lifeExpectancyPreview">90 歲</output></div>
+              <input id="lifeExpectancySlider" type="range" step="1" max="110" aria-label="選擇規劃至幾歲">
+              <div class="retirement-age-scale"><span id="lifeExpectancyMin"></span><span id="lifeExpectancyMax"></span></div>
+            </div>
+          </div>
+          <p id="retirementAgeMessage" class="message" role="status"></p>
         </section>
-        <section class="card">
-          <div class="card-heading"><div><p class="caption">接下來的行動</p><h3>本月建議</h3></div></div>
-          <div id="recommendations" class="recommendations"></div>
-        </section>
+        <form id="settingsForm" class="card overview-settings-card">
+          <button id="toggleOverviewSettings" class="settings-collapse-toggle" type="button" aria-expanded="false" aria-controls="overviewSettingsPanel" aria-label="展開退休設定" title="展開退休設定"><span>退休設定</span><small aria-hidden="true"></small></button>
+          <div id="overviewSettingsPanel" class="overview-settings-grid" hidden>
+            <div class="overview-settings-column">
+              <div class="choice-field"><span>每月生活費</span><div class="compact-choice-group" role="group" aria-label="每月生活費"><button type="button" data-setting="retirementMonthlySpend" data-value="30000">3 萬</button><button type="button" data-setting="retirementMonthlySpend" data-value="50000">5 萬</button><button type="button" data-setting="retirementMonthlySpend" data-value="60000">6 萬</button></div><input name="retirementMonthlySpend" type="hidden"></div>
+              <div class="choice-field"><div class="choice-label-row"><span>每年出國次數</span><small>每次預算 15 萬</small></div><div class="compact-choice-group" role="group" aria-label="每年出國次數"><button type="button" data-setting="annualTravelTrips" data-value="1">1 次</button><button type="button" data-setting="annualTravelTrips" data-value="2">2 次</button><button type="button" data-setting="annualTravelTrips" data-value="3">3 次</button><button type="button" data-setting="annualTravelTrips" data-value="4">4 次</button></div><input name="annualTravelTrips" type="hidden"></div>
+              <div class="choice-field"><span>代步車</span><div class="compact-choice-group" role="group" aria-label="代步車預算"><button type="button" data-setting="carBudget" data-value="0">不買車</button><button type="button" data-setting="carBudget" data-value="800000">80 萬</button><button type="button" data-setting="carBudget" data-value="1000000">100 萬</button><button type="button" data-setting="carBudget" data-value="1200000">120 萬</button></div><input name="carBudget" type="hidden"></div>
+            </div>
+            <div class="overview-settings-column">
+              <div class="choice-field"><span>勞退領取方式</span><div class="compact-choice-group" role="group" aria-label="勞退領取方式"><button type="button" data-setting="laborPensionPayoutMode" data-value="lump">一次領</button><button type="button" data-setting="laborPensionPayoutMode" data-value="monthly">按月領</button></div><input name="laborPensionPayoutMode" type="hidden"></div>
+              <div class="choice-field"><span>勞保領取方式</span><div class="compact-choice-group" role="group" aria-label="勞保領取方式"><button type="button" data-setting="laborInsurancePayoutMode" data-value="lump">一次領</button><button type="button" data-setting="laborInsurancePayoutMode" data-value="monthly">按月領</button></div><input name="laborInsurancePayoutMode" type="hidden"></div>
+              <div class="choice-field"><span>小孩成年每月支助金（～25 歲）</span><div class="compact-choice-group" role="group" aria-label="小孩成年每月支助金至 25 歲"><button type="button" data-setting="childrenMonthlySupportAfterRetirement" data-value="10000">1 萬</button><button type="button" data-setting="childrenMonthlySupportAfterRetirement" data-value="15000">1.5 萬</button><button type="button" data-setting="childrenMonthlySupportAfterRetirement" data-value="20000">2 萬</button></div><input name="childrenMonthlySupportAfterRetirement" type="hidden"></div>
+            </div>
+            <div class="overview-settings-column">
+              <div class="choice-field"><span>小孩成家預備金</span><div class="compact-choice-group" role="group" aria-label="小孩成家預備金"><button type="button" data-setting="childrenMilestoneReserve" data-value="500000">50 萬</button><button type="button" data-setting="childrenMilestoneReserve" data-value="1000000">100 萬</button><button type="button" data-setting="childrenMilestoneReserve" data-value="2000000">200 萬</button></div><input name="childrenMilestoneReserve" type="hidden"></div>
+              <div class="choice-field"><span>父母預備金</span><div class="compact-choice-group" role="group" aria-label="父母預備金"><button type="button" data-setting="parentMedicalReserve" data-value="100000">10 萬</button><button type="button" data-setting="parentMedicalReserve" data-value="150000">15 萬</button><button type="button" data-setting="parentMedicalReserve" data-value="200000">20 萬</button></div><input name="parentMedicalReserve" type="hidden"></div>
+              <div class="choice-field"><span>個人預備金</span><div class="compact-choice-group" role="group" aria-label="個人預備金"><button type="button" data-setting="personalMedicalReserve" data-value="100000">10 萬</button><button type="button" data-setting="personalMedicalReserve" data-value="150000">15 萬</button><button type="button" data-setting="personalMedicalReserve" data-value="200000">20 萬</button></div><input name="personalMedicalReserve" type="hidden"></div>
+              <div class="choice-field"><span>緊急預備金</span><div class="compact-choice-group" role="group" aria-label="緊急預備金"><button type="button" data-setting="emergencyCashReserve" data-value="50000">5 萬</button><button type="button" data-setting="emergencyCashReserve" data-value="80000">8 萬</button><button type="button" data-setting="emergencyCashReserve" data-value="100000">10 萬</button></div><input name="emergencyCashReserve" type="hidden"></div>
+            </div>
+          </div>
+          <input name="preReturn" type="hidden"><input name="postReturn" type="hidden"><input name="inflation" type="hidden"><input name="lifeExpectancy" type="hidden"><input name="currentAge" type="hidden" value="43"><input name="retirementAge" type="hidden"><input name="semiRetirementEndAge" type="hidden"><input name="unionInsuranceMonthly" type="hidden"><input name="laborPensionAccessAge" type="hidden"><input name="laborInsuranceBenefitAge" type="hidden"><input name="laborInsuranceMonthlyBenefit" type="hidden"><input name="child1BirthMonth" type="hidden"><input name="child2BirthMonth" type="hidden"><input name="childSupportUntilAge" type="hidden"><input name="childrenSupportUntilParentAge" type="hidden"><input name="childrenMilestoneAge" type="hidden"><input name="parentsMonthlySupport" type="hidden"><input name="parentSupportUntilAge" type="hidden"><input name="healthCareStartAge" type="hidden"><input name="healthCareMonthlyExpense" type="hidden">
+        </form>
+        <div class="overview-summary-layout">
+          <section class="card progress-card overview-progress-card">
+            <div class="overview-progress-heading"><p class="caption">退休準備進度</p><span id="targetAgeBadge" class="badge">55 歲</span></div>
+            <div id="progressRing" class="progress-ring"><strong id="progressText">0%</strong></div>
+            <div class="progress-labels"><span id="currentAssetsLabel"></span><span id="targetAssetsLabel"></span></div>
+            <div class="progress-formula">公式：目前淨資產 ÷ 半退休目標資產 × 100%</div>
+          </section>
+          <div class="overview-summary-content">
+            <section class="overview-result-section"><p class="caption">試算結果</p><div id="metrics" class="metric-grid"></div></section>
+            <section class="overview-action-section"><p class="caption">待辦事項</p><div id="actionItems" class="action-item-grid"></div></section>
+          </div>
+        </div>
       </section>
 
       <section id="assetsPage" class="page" hidden>
@@ -66,7 +105,7 @@
       </section>
 
       <section id="liabilitiesPage" class="page" hidden>
-        <div class="page-heading"><div><p class="eyebrow">MORTGAGE</p><h2 class="inline-page-title">房貸 <button id="openMortgageHistoryDialog" class="heading-link" type="button">（年度還款紀錄）</button></h2></div><span id="mortgageUpdatedAt" class="muted"></span></div>
+        <div class="page-heading"><div><p class="eyebrow">MORTGAGE</p><h2 class="inline-page-title">房貸 <button id="openMortgageHistoryDialog" class="heading-link" type="button">（年度還款紀錄）</button></h2><span id="mortgageUpdatedAt" class="muted updated-under-title"></span></div></div>
         <div id="mortgageMetrics" class="metric-grid mortgage-metrics"></div>
         <form id="mortgageForm" class="card form-grid">
           <label class="field"><span>截至日期</span><input name="asOfDate" type="date"></label>
@@ -78,7 +117,7 @@
       </section>
 
       <section id="cashflowPage" class="page" hidden>
-        <div class="page-heading"><div><p class="eyebrow">CASH FLOW</p><h2 class="inline-page-title">每月收支 <button id="openCashflowRecordsDialog" class="heading-link" type="button">（每月紀錄）</button></h2></div><div class="heading-side"><div class="cashflow-actions"><button id="openIncomeDialog" class="button primary" type="button">新增收入</button><button id="openExpenseDialog" class="button secondary" type="button">新增支出</button></div><span id="cashflowsUpdatedAt" class="muted"></span></div></div>
+        <div class="page-heading"><div><p class="eyebrow">CASH FLOW</p><h2 class="inline-page-title">每月收支 <button id="openCashflowRecordsDialog" class="heading-link" type="button">（每月紀錄）</button></h2><span id="cashflowsUpdatedAt" class="muted updated-under-title"></span></div><div class="heading-side"><div class="cashflow-actions"><button id="openIncomeDialog" class="button primary" type="button">新增收入</button><button id="openExpenseDialog" class="button secondary" type="button">新增支出</button></div></div></div>
         <div id="cashflowAverageEmpty" class="card empty">尚未建立每月收支資料。</div>
         <div id="cashflowAverageOverview" hidden>
           <div id="cashflowAverageMetrics" class="metric-grid cashflow-average-metrics"></div>
@@ -137,34 +176,29 @@
               </div>
             </section>
             <section class="cashflow-section">
-              <div class="section-heading"><p class="caption">OTHER EXPENSES</p><h3>其他支出</h3></div>
               <div class="cashflow-fields">
-                <label class="field"><span>生活開銷</span><input name="livingExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                <div class="cashflow-living-block">
+                  <div class="cashflow-tax-heading"><p class="caption">LIVING EXPENSES</p><h4>生活開銷</h4></div>
+                  <div class="cashflow-living-fields">
+                    <label class="field"><span>國泰信用卡</span><input name="cathayCardExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                    <label class="field"><span>富邦信用卡</span><input name="fubonCardExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                    <label class="field"><span>其他信用卡</span><input name="otherCardExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                    <label class="field"><span>現金支出</span><input name="cashExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                    <label class="field"><span>帳戶支出</span><input name="accountExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                  </div>
+                </div>
                 <label class="field"><span>個人保險</span><input name="personalInsuranceExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>兩隻花費</span><input name="petExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>兩隻保險</span><input name="petInsuranceExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
               </div>
             </section>
           </div>
-          <div class="form-actions"><button class="button primary" type="submit">更新每月收支</button><p id="cashflowMessage" class="message" role="status"></p></div>
+          <div class="form-actions"><button id="deleteCashflowRecord" class="button danger" type="button" hidden>清除此月份全部紀錄</button><button class="button primary" type="submit">更新每月收支</button><p id="cashflowMessage" class="message" role="status"></p></div>
         </form>
           </div>
         </dialog>
       </section>
 
-      <section id="settingsPage" class="page" hidden>
-        <div class="page-heading"><div><p class="eyebrow">SETTINGS</p><h2>退休設定</h2></div></div>
-        <form id="settingsForm" class="card form-grid">
-          <label class="field"><span>目前年齡</span><input name="currentAge" type="text" inputmode="text" placeholder="例如：今年-1983" required></label>
-          <label class="field"><span>預計退休年齡</span><input name="retirementAge" type="text" inputmode="decimal" required></label>
-          <label class="field"><span>規劃至幾歲</span><input name="lifeExpectancy" type="text" inputmode="decimal" required></label>
-          <label class="field"><span>退休後每月生活費</span><input name="retirementMonthlySpend" type="text" inputmode="decimal" required></label>
-          <label class="field"><span>退休前年化報酬率（%）</span><input name="preReturn" type="text" inputmode="decimal" required></label>
-          <label class="field"><span>退休後年化報酬率（%）</span><input name="postReturn" type="text" inputmode="decimal" required></label>
-          <label class="field"><span>預估通膨率（%）</span><input name="inflation" type="text" inputmode="decimal" required></label>
-          <div class="form-actions"><button class="button primary" type="submit">儲存設定</button><p id="settingsMessage" class="message" role="status"></p></div>
-        </form>
-      </section>
     </main>
   </div>
 
@@ -182,7 +216,21 @@
       <div class="dialog-heading"><h2>每月收支紀錄</h2><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
       <label class="field cashflow-year-filter" for="cashflowYearFilter"><span>年份</span><select id="cashflowYearFilter"><option value="">全部年份</option></select></label>
       <div id="cashflowEmpty" class="empty">還沒有收支資料。</div>
-      <div class="table-wrap"><table id="cashflowTable"><thead><tr><th>月份</th><th class="number">薪資</th><th class="number">獎金</th><th class="number">國泰配息</th><th class="number">元大配息</th><th class="number">固定支出</th><th class="number">生活開銷</th><th class="number">個人保險</th><th class="number">兩隻花費</th><th class="number">兩隻保險</th><th class="number">房屋／地價稅</th><th class="number">綜合所得稅</th><th class="number">其他稅務</th><th class="number">總支出</th><th class="number">結餘</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table id="cashflowTable"><thead><tr><th>月份</th><th class="number">薪資</th><th class="number">獎金</th><th class="number">國泰配息</th><th class="number">元大配息</th><th class="number">固定支出</th><th class="number">國泰卡</th><th class="number">富邦卡</th><th class="number">其他卡</th><th class="number">現金支出</th><th class="number">帳戶支出</th><th class="number">個人保險</th><th class="number">兩隻</th><th class="number">稅負</th><th class="number">總支出</th><th class="number">結餘</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </dialog>
+
+  <dialog id="deleteCashflowDialog" class="confirm-dialog">
+    <div class="dialog-form">
+      <div class="dialog-heading"><h2>清除此月份全部紀錄？</h2><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+      <p id="deleteCashflowDescription" class="confirm-description"></p>
+      <div class="confirm-summary">
+        <div><span>收入合計</span><strong id="deleteCashflowIncome"></strong></div>
+        <div><span>支出合計</span><strong id="deleteCashflowExpense"></strong></div>
+        <div><span>當月結餘</span><strong id="deleteCashflowNet"></strong></div>
+      </div>
+      <p class="confirm-warning">收入、支出與備註都會一併刪除，且無法復原。</p>
+      <div class="dialog-actions"><button class="button secondary" type="button" data-close-dialog>取消</button><button id="confirmDeleteCashflow" class="button danger" type="button">確認清除</button></div>
     </div>
   </dialog>
 
@@ -217,6 +265,22 @@
       <p id="githubSettingsMessage" class="message" role="status"></p>
       <div class="dialog-actions"><button id="clearGithubToken" class="button secondary" type="button">清除 Token</button><button class="button primary" type="submit">儲存</button></div>
     </form>
+  </dialog>
+
+  <dialog id="retirementAssessmentDialog" class="retirement-assessment-dialog">
+    <div class="dialog-form">
+      <div class="dialog-heading"><div><p class="caption">RETIREMENT ASSESSMENT</p><div class="assessment-title-row"><h2>退休計畫評估</h2><span class="assessment-assumptions"><i aria-hidden="true">i</i><span id="retirementRateAssumptions"></span></span></div></div><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+      <section class="assessment-section">
+        <div class="card-heading"><div><p class="caption">TARGET PLAN</p><h3>目標年齡方案</h3></div></div>
+        <div id="retirementBenefitAssumption" class="retirement-benefit-assumption"></div>
+        <div id="vehiclePlanAssumption" class="vehicle-plan-assumption"></div>
+        <div id="recommendations" class="recommendations"></div>
+      </section>
+      <section class="assessment-section">
+        <div class="card-heading"><div><p class="caption">ALTERNATIVE PLANS</p><h3>其他適合的半退休方案</h3></div></div>
+        <div id="retirementScenarios" class="scenario-grid"></div>
+      </section>
+    </div>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

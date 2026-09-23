@@ -1,8 +1,9 @@
 import { CONFIG } from './config.js';
 
 const defaults = {
-  settings: { currentAge: 30, retirementAge: 65, lifeExpectancy: 90, retirementMonthlySpend: 0, preReturn: 5, postReturn: 3, inflation: 2 },
+  settings: { currentAge: 30, retirementAge: 55, semiRetirementEndAge: 60, lifeExpectancy: 90, retirementMonthlySpend: 0, annualTravelTrips: 0, carBudget: 1200000, emergencyCashReserve: 100000, unionInsuranceMonthly: 0, laborPensionAccessAge: 60, laborPensionPayoutMode: 'lump', laborInsuranceBenefitAge: 65, laborInsurancePayoutMode: 'monthly', laborInsuranceMonthlyBenefit: 0, child1BirthMonth: '2013-08', child2BirthMonth: '2015-09', childSupportUntilAge: 20, childrenMonthlySupportAfterRetirement: 0, childrenSupportUntilParentAge: 70, childrenMilestoneReserve: 0, childrenMilestoneAge: 60, parentsMonthlySupport: 0, parentSupportUntilAge: 65, parentMedicalReserve: 0, healthCareStartAge: 70, healthCareMonthlyExpense: 0, personalMedicalReserve: 0, preReturn: 5, postReturn: 3, inflation: 2 },
   settingsUpdatedAt: '',
+  settingsSyncPending: false,
   assetsUpdatedAt: '',
   cashflowsUpdatedAt: '',
   assetSummary: { totalBalance: 0, accounts: [], holdingsValue: 0, laborPension: { tenureYears: 0, tenureMonths: 0, employerContribution: 0, returns: 0, total: 0 } },
@@ -57,6 +58,7 @@ export async function loadState() {
     fetchDataFile('cashflows.json'), fetchDataFile('defaults.json')
   ]);
   const state = local || copy(defaults);
+  state.settings = { ...defaults.settings, ...(state.settings || {}) };
   state.assets = (state.assets || []).map((item) => ({ ...item, totalBalance: Number(item.totalBalance ?? item.amount ?? 0), holdingsValue: Number(item.holdingsValue || 0) }));
   state.mortgage = { ...defaults.mortgage, ...(state.mortgage || {}) };
   state.cashflowDefaults = { ...defaults.cashflowDefaults, ...(state.cashflowDefaults || {}), ...(defaultsSnapshot?.cashflow || {}) };
@@ -64,7 +66,7 @@ export async function loadState() {
   if (snapshot?.settings) {
     const remoteTime = Date.parse(snapshot.updatedAt || '') || 0;
     const localTime = Date.parse(state.settingsUpdatedAt || '') || 0;
-    if (!local || remoteTime > localTime) {
+    if (!local || (!state.settingsSyncPending && remoteTime > localTime)) {
       state.settings = { ...defaults.settings, ...snapshot.settings };
       state.settingsUpdatedAt = snapshot.updatedAt || '';
     }
