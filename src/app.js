@@ -5,6 +5,7 @@ import { clearGithubToken, loadGithubToken, loadState, saveGithubToken, saveStat
 
 let state;
 let toastTimer;
+let returnToCashflowRecords = false;
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const money = new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 });
@@ -114,16 +115,88 @@ function actionButtons(type, id) {
   return `<div class="row-actions"><button data-edit="${type}" data-id="${id}">編輯</button><button data-delete="${type}" data-id="${id}">刪除</button></div>`;
 }
 
+function assetBalanceAccounts(summary = {}) {
+  if (Array.isArray(summary.accounts)) return summary.accounts;
+  const legacyBalance = Number(summary.totalBalance) || 0;
+  return legacyBalance > 0 ? [{ id: 'legacy-account', name: '帳戶', balance: legacyBalance }] : [];
+}
+
 function renderAssets() {
   const form = $('#assetForm');
   const pension = state.assetSummary?.laborPension || {};
-  form.elements.totalBalance.value = state.assetSummary?.totalBalance ?? 0;
+  const accounts = assetBalanceAccounts(state.assetSummary);
+  const totalBalance = accounts.reduce((sum, account) => sum + Number(account.balance || 0), 0);
+  $('#accountTotalBalance').textContent = money.format(totalBalance);
   form.elements.holdingsValue.value = state.assetSummary?.holdingsValue ?? 0;
   form.elements.employerContribution.value = pension.employerContribution ?? 0;
   form.elements.pensionReturns.value = pension.returns ?? 0;
   $('#laborPensionTotal').textContent = money.format(pension.total ?? 0);
   $('#openTenureDialog').textContent = `（累積提繳年資：${Number(pension.tenureYears ?? 20)} 年 ${Number(pension.tenureMonths ?? 8)} 個月）`;
   $('#assetsUpdatedAt').textContent = state.assetsUpdatedAt ? `更新於 ${new Date(state.assetsUpdatedAt).toLocaleString('zh-TW')}` : '尚未建立資料';
+}
+
+let accountSequence = 0;
+
+function createAccountId() {
+  accountSequence += 1;
+  return `account-${Date.now()}-${accountSequence}`;
+}
+
+function createAccountBalanceRow(account = {}) {
+  const row = document.createElement('div');
+  row.className = 'account-balance-row';
+  row.dataset.accountId = account.id || createAccountId();
+  row.innerHTML = '<label class="field"><span>帳戶名稱</span><input name="accountName" type="text" required placeholder="例如：國泰世華"></label><label class="field"><span>餘額</span><input name="accountBalance" type="text" inputmode="decimal" required placeholder="0"></label><button class="icon-button remove-account-balance" type="button" aria-label="刪除帳戶">×</button>';
+  $('[name="accountName"]', row).value = account.name || '';
+  $('[name="accountBalance"]', row).value = Number(account.balance) || 0;
+  return row;
+}
+
+function updateAccountBalancesTotal() {
+  const total = $$('#accountBalanceRows [name="accountBalance"]').reduce((sum, input) => {
+    const value = parseNumber(input.value);
+    return sum + (Number.isFinite(value) ? value : 0);
+  }, 0);
+  $('#accountBalancesTotal').textContent = money.format(total);
+}
+
+function renderAccountBalancesForm() {
+  const accounts = assetBalanceAccounts(state.assetSummary);
+  const rows = accounts.length ? accounts.map(createAccountBalanceRow) : [createAccountBalanceRow()];
+  $('#accountBalanceRows').replaceChildren(...rows);
+  $('#accountBalancesUpdatedAt').textContent = state.assetsUpdatedAt ? `更新於 ${new Date(state.assetsUpdatedAt).toLocaleString('zh-TW')}` : '尚未建立資料';
+  setMessage($('#accountBalancesMessage'), '');
+  updateAccountBalancesTotal();
+}
+
+async function saveAccountBalances(form) {
+  if (!form.reportValidity()) return;
+  const accounts = $$('.account-balance-row', form).map((row) => ({
+    id: row.dataset.accountId || createAccountId(),
+    name: $('[name="accountName"]', row).value.trim(),
+    balance: parseNumber($('[name="accountBalance"]', row).value)
+  }));
+  if (!accounts.length || accounts.some((account) => !account.name || !Number.isFinite(account.balance) || account.balance < 0)) {
+    setMessage($('#accountBalancesMessage'), '請輸入帳戶名稱及有效餘額。', true);
+    return;
+  }
+  const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+  const updatedAt = new Date().toISOString();
+  const summary = { ...state.assetSummary, accounts, totalBalance };
+  const submit = $('button[type="submit"]', form);
+  setBusy(submit, true);
+  setMessage($('#accountBalancesMessage'), '正在寫入 JSON…');
+  try {
+    await writeAssets(summary, updatedAt);
+    state.assetSummary = summary;
+    state.assetsUpdatedAt = updatedAt;
+    saveState(state);
+    render();
+    $('#accountBalancesDialog').close();
+    toast(`帳戶總餘額已更新為 ${money.format(totalBalance)}`);
+  } catch (error) {
+    setMessage($('#accountBalancesMessage'), error.message, true);
+  } finally { setBusy(submit, false); }
 }
 
 function estimateMortgageMonths(mortgage) {
@@ -220,38 +293,84 @@ function simulateMortgagePeriod(openingPrincipal, annualRate, monthlyPayment, mo
   return { interestPaid, scheduledClosingPrincipal: balance };
 }
 
+function cashflowValue(record, field) {
+  if (field === 'cathayDividends' && record.cathayDividends == null && record.yuantaDividends == null) {
+    return Number(record.dividends) || 0;
+  }
+  if (field === 'petExpenses' && record.petExpenses == null) return Number(record.educationExpenses) || 0;
+  if (field === 'personalInsuranceExpenses' && record.personalInsuranceExpenses == null) return Number(record.insuranceExpenses) || 0;
+  return Number(record[field]) || 0;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character]);
+}
+
+function amountWithNote(record, field, noteField) {
+  const note = String(record[noteField] || '').trim();
+  return `<span>${money.format(cashflowValue(record, field))}</span>${note ? `<small>${escapeHtml(note)}</small>` : ''}`;
+}
+
 function renderCashflows() {
   const records = state.cashflows.slice().sort((a, b) => b.month.localeCompare(a.month));
+  const yearFilter = $('#cashflowYearFilter');
+  const years = [...new Set(records.map((item) => item.month.slice(0, 4)))];
+  const selectedYear = years.includes(yearFilter.value) ? yearFilter.value : '';
+  const yearOptions = ['', ...years].map((year) => {
+    const option = document.createElement('option');
+    option.value = year;
+    option.textContent = year ? `${year} 年` : '全部年份';
+    return option;
+  });
+  yearFilter.replaceChildren(...yearOptions);
+  yearFilter.value = selectedYear;
+  const visibleRecords = selectedYear ? records.filter((item) => item.month.startsWith(`${selectedYear}-`)) : records;
   const body = $('#cashflowTable tbody');
-  body.replaceChildren(...records.map((item) => {
+  body.replaceChildren(...visibleRecords.map((item) => {
     const row = document.createElement('tr');
-    row.innerHTML = `<td>${item.month}</td><td class="number">${money.format(item.totalIncome)}</td><td class="number">${money.format(item.fixedExpenses)}</td><td class="number">${money.format(item.livingExpenses)}</td><td class="number">${money.format(item.educationExpenses)}</td><td class="number">${money.format(item.totalExpense)}</td><td class="number">${money.format(item.net)}</td><td><div class="row-actions"><button data-edit-income="${item.month}">收入</button><button data-edit-expense="${item.month}">支出</button><button data-delete="cashflow" data-id="${item.month}">刪除</button></div></td>`;
+    row.innerHTML = `<td>${item.month}</td><td class="number">${money.format(item.netSalary || 0)}</td><td class="number tax-record-value">${amountWithNote(item, 'bonus', 'bonusNote')}</td><td class="number">${money.format(cashflowValue(item, 'cathayDividends'))}</td><td class="number">${money.format(cashflowValue(item, 'yuantaDividends'))}</td><td class="number">${money.format(item.fixedExpenses)}</td><td class="number">${money.format(item.livingExpenses)}</td><td class="number">${money.format(cashflowValue(item, 'personalInsuranceExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'petExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'petInsuranceExpenses'))}</td><td class="number">${money.format(cashflowValue(item, 'propertyLandTax'))}</td><td class="number">${money.format(cashflowValue(item, 'comprehensiveIncomeTax'))}</td><td class="number tax-record-value">${amountWithNote(item, 'otherTaxes', 'otherTaxesNote')}</td><td class="number">${money.format(item.totalExpense)}</td><td class="number">${money.format(item.net)}</td><td><div class="row-actions"><button data-edit-income="${item.month}">收入</button><button data-edit-expense="${item.month}">支出</button><button data-delete="cashflow" data-id="${item.month}">刪除</button></div></td>`;
     return row;
   }));
   $('#cashflowEmpty').hidden = state.cashflows.length > 0;
   $('#cashflowTable').hidden = state.cashflows.length === 0;
   $('#cashflowsUpdatedAt').textContent = state.cashflowsUpdatedAt ? `更新於 ${new Date(state.cashflowsUpdatedAt).toLocaleString('zh-TW')}` : '尚未建立資料';
-  const latest = records[0];
-  $('#cashflowLatestEmpty').hidden = Boolean(latest);
-  $('#cashflowLatestOverview').hidden = !latest;
-  if (!latest) return;
-  $('#cashflowLatestMetrics').innerHTML = [
-    metric('最新月份', latest.month, '目前顯示的收支月份'),
-    metric('收入', money.format(latest.totalIncome || 0), '薪資＋獎金＋配息'),
-    metric('支出', money.format(latest.totalExpense || 0), '固定支出＋其他支出'),
-    metric('當月結餘', money.format(latest.net || 0), latest.net >= 0 ? '可投入或保留的資金' : '本月支出超過收入')
+  const hasRecords = records.length > 0;
+  $('#cashflowAverageEmpty').hidden = hasRecords;
+  $('#cashflowAverageOverview').hidden = !hasRecords;
+  if (!hasRecords) return;
+  const average = (field) => records.reduce((sum, record) => {
+    return sum + cashflowValue(record, field);
+  }, 0) / records.length;
+  const averages = Object.fromEntries([
+    'netSalary', 'bonus', 'cathayDividends', 'yuantaDividends', 'totalIncome', 'mortgage', 'utilities', 'internet',
+    'managementFee', 'livingExpenses', 'personalInsuranceExpenses', 'petExpenses', 'petInsuranceExpenses',
+    'propertyLandTax', 'comprehensiveIncomeTax', 'otherTaxes', 'totalExpense', 'net'
+  ].map((field) => [field, average(field)]));
+  const period = records.length === 1 ? records[0].month : `${records.at(-1).month} ～ ${records[0].month}`;
+  $('#cashflowAverageMetrics').innerHTML = [
+    metric('統計月份', `${records.length} 個月`, period),
+    metric('平均收入', money.format(averages.totalIncome), '每月收入合計的平均'),
+    metric('平均支出', money.format(averages.totalExpense), '每月支出合計的平均'),
+    metric('平均月結餘', money.format(averages.net), averages.net >= 0 ? '平均可投入或保留的資金' : '平均每月支出超過收入')
   ].join('');
   const breakdown = (label, value) => `<div class="breakdown-row"><span>${label}</span><strong>${money.format(value || 0)}</strong></div>`;
-  $('#latestIncomeBreakdown').innerHTML = [
-    breakdown('當月薪資', latest.netSalary), breakdown('獎金', latest.bonus), breakdown('每月配息', latest.dividends)
+  $('#averageIncomeBreakdown').innerHTML = [
+    breakdown('薪資', averages.netSalary), breakdown('獎金', averages.bonus),
+    breakdown('國泰配息', averages.cathayDividends), breakdown('元大配息', averages.yuantaDividends)
   ].join('');
-  $('#latestExpenseBreakdown').innerHTML = [
-    breakdown('房貸', latest.mortgage), breakdown('水電瓦斯', latest.utilities), breakdown('電信／網路', latest.internet),
-    breakdown('管理費', latest.managementFee), breakdown('生活開銷', latest.livingExpenses), breakdown('教育費用', latest.educationExpenses)
+  $('#averageExpenseBreakdown').innerHTML = [
+    breakdown('房貸', averages.mortgage), breakdown('水電瓦斯', averages.utilities), breakdown('電信／網路', averages.internet),
+    breakdown('管理費', averages.managementFee), breakdown('生活開銷', averages.livingExpenses),
+    breakdown('個人保險', averages.personalInsuranceExpenses), breakdown('兩隻花費', averages.petExpenses),
+    breakdown('兩隻保險', averages.petInsuranceExpenses), breakdown('房屋／地價稅', averages.propertyLandTax),
+    breakdown('綜合所得稅', averages.comprehensiveIncomeTax), breakdown('其他稅務', averages.otherTaxes)
   ].join('');
 }
 
-const cashflowAmountFields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction', 'bonus', 'dividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'livingExpenses', 'educationExpenses'];
+const cashflowAmountFields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction', 'bonus', 'cathayDividends', 'yuantaDividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'livingExpenses', 'personalInsuranceExpenses', 'petExpenses', 'petInsuranceExpenses', 'propertyLandTax', 'comprehensiveIncomeTax', 'otherTaxes'];
+const cashflowNoteFields = ['bonusNote', 'otherTaxesNote'];
 
 function updateMonthlySalaryTotal() {
   const form = $('#cashflowForm');
@@ -269,8 +388,11 @@ function configureCashflowForm(month = currentYearMonth()) {
   const defaults = { ...state.cashflowDefaults, mortgage: Number(state.mortgage?.monthlyPayment || 0) };
   cashflowAmountFields.forEach((field) => {
     const carryForward = field === 'mortgage' || field === 'managementFee';
-    form.elements[field].value = record?.[field] ?? (carryForward ? fixedExpenseForMonth(field, shiftYearMonth(month, -1), defaults[field]) : defaults[field] ?? 0);
+    const needsLegacyFallback = field === 'cathayDividends' || field === 'yuantaDividends' || field === 'petExpenses' || field === 'personalInsuranceExpenses';
+    const existingValue = record ? (needsLegacyFallback ? cashflowValue(record, field) : record[field]) : null;
+    form.elements[field].value = existingValue ?? (carryForward ? fixedExpenseForMonth(field, shiftYearMonth(month, -1), defaults[field]) : defaults[field] ?? 0);
   });
+  cashflowNoteFields.forEach((field) => { form.elements[field].value = record?.[field] ?? ''; });
   updateMonthlySalaryTotal();
   setMessage($('#cashflowMessage'), record ? '此月份已有紀錄，送出後會直接更新。' : '');
 }
@@ -282,7 +404,8 @@ function setCashflowTab(name) {
   $('#cashflowEntryTitle').textContent = name === 'income' ? '新增收入' : '新增支出';
 }
 
-function openCashflowEntry(kind, month = currentYearMonth()) {
+function openCashflowEntry(kind, month = currentYearMonth(), returnToRecords = false) {
+  returnToCashflowRecords = returnToRecords;
   configureCashflowForm(month);
   setCashflowTab(kind);
   $('#cashflowEntryDialog').showModal();
@@ -304,14 +427,17 @@ function render() {
 async function saveCashflow(form) {
   if (!form.reportValidity()) return;
   const values = Object.fromEntries(cashflowAmountFields.map((field) => [field, parseNumber(form.elements[field].value)]));
+  const notes = Object.fromEntries(cashflowNoteFields.map((field) => [field, form.elements[field].value.trim()]));
   if (Object.values(values).some((value) => !Number.isFinite(value) || value < 0)) {
     setMessage($('#cashflowMessage'), '請確認所有收入與支出都是有效金額。', true); return;
   }
   const netSalary = values.baseSalary + values.mealAllowance + values.taxFreeOvertime - values.laborInsurance - values.healthInsurance - values.incomeTax - values.welfareFund - values.leaveDeduction;
-  const totalIncome = netSalary + values.bonus + values.dividends;
+  const dividends = values.cathayDividends + values.yuantaDividends;
+  const totalIncome = netSalary + values.bonus + dividends;
   const fixedExpenses = values.mortgage + values.utilities + values.internet + values.managementFee;
-  const totalExpense = fixedExpenses + values.livingExpenses + values.educationExpenses;
-  const record = { month: form.elements.month.value, ...values, netSalary, totalIncome, fixedExpenses, totalExpense, net: totalIncome - totalExpense };
+  const totalExpense = fixedExpenses + values.livingExpenses + values.personalInsuranceExpenses + values.petExpenses
+    + values.petInsuranceExpenses + values.propertyLandTax + values.comprehensiveIncomeTax + values.otherTaxes;
+  const record = { month: form.elements.month.value, ...values, ...notes, netSalary, dividends, totalIncome, fixedExpenses, totalExpense, net: totalIncome - totalExpense };
   const records = state.cashflows.filter((item) => item.month !== record.month);
   records.push(record);
   records.sort((a, b) => b.month.localeCompare(a.month));
@@ -332,6 +458,8 @@ async function saveCashflow(form) {
     render();
     configureCashflowForm(record.month);
     $('#cashflowEntryDialog').close();
+    if (returnToCashflowRecords) $('#cashflowRecordsDialog').showModal();
+    returnToCashflowRecords = false;
     toast(`已更新 ${record.month} 每月收支`);
   } catch (error) {
     setMessage($('#cashflowMessage'), error.message, true);
@@ -339,7 +467,8 @@ async function saveCashflow(form) {
 }
 
 async function saveAssetSummary(form) {
-  const totalBalance = parseNumber(form.elements.totalBalance.value);
+  const accounts = assetBalanceAccounts(state.assetSummary);
+  const totalBalance = accounts.reduce((sum, account) => sum + Number(account.balance || 0), 0);
   const holdingsValue = parseNumber(form.elements.holdingsValue.value);
   const employerContribution = parseNumber(form.elements.employerContribution.value);
   const returns = parseNumber(form.elements.pensionReturns.value);
@@ -349,7 +478,7 @@ async function saveAssetSummary(form) {
   }
   const updatedAt = new Date().toISOString();
   const laborPension = { tenureYears: Number(state.assetSummary?.laborPension?.tenureYears ?? 20), tenureMonths: Number(state.assetSummary?.laborPension?.tenureMonths ?? 8), employerContribution, returns, total: employerContribution + returns };
-  const summary = { totalBalance, holdingsValue, laborPension };
+  const summary = { totalBalance, accounts, holdingsValue, laborPension };
   const submit = $('button[type="submit"]', form);
   setBusy(submit, true); setMessage($('#assetMessage'), '正在寫入 JSON…');
   try {
@@ -383,12 +512,30 @@ $('[data-cashflow-tab="income"]').closest('.section-tabs').addEventListener('cli
   if (button) setCashflowTab(button.dataset.cashflowTab);
 });
 $('#assetForm').addEventListener('submit', (event) => { event.preventDefault(); saveAssetSummary(event.currentTarget); });
+$('#accountBalancesForm').addEventListener('submit', (event) => { event.preventDefault(); saveAccountBalances(event.currentTarget); });
 $('#cashflowForm').addEventListener('submit', (event) => { event.preventDefault(); saveCashflow(event.currentTarget); });
 $('#cashflowForm').elements.month.addEventListener('change', (event) => configureCashflowForm(event.currentTarget.value));
 $('#openIncomeDialog').addEventListener('click', () => openCashflowEntry('income'));
 $('#openExpenseDialog').addEventListener('click', () => openCashflowEntry('expense'));
 $('#openMortgageHistoryDialog').addEventListener('click', () => $('#mortgageHistoryDialog').showModal());
 $('#openCashflowRecordsDialog').addEventListener('click', () => $('#cashflowRecordsDialog').showModal());
+$('#cashflowYearFilter').addEventListener('change', renderCashflows);
+$('#openAccountBalancesDialog').addEventListener('click', () => {
+  renderAccountBalancesForm();
+  $('#accountBalancesDialog').showModal();
+});
+$('#addAccountBalance').addEventListener('click', () => {
+  $('#accountBalanceRows').append(createAccountBalanceRow());
+  updateAccountBalancesTotal();
+});
+$('#accountBalanceRows').addEventListener('input', updateAccountBalancesTotal);
+$('#accountBalanceRows').addEventListener('click', (event) => {
+  const remove = event.target.closest('.remove-account-balance');
+  if (!remove) return;
+  remove.closest('.account-balance-row').remove();
+  if (!$('#accountBalanceRows').children.length) $('#accountBalanceRows').append(createAccountBalanceRow());
+  updateAccountBalancesTotal();
+});
 $('#openGithubSettingsDialog').addEventListener('click', () => {
   $('#githubToken').value = loadGithubToken();
   setMessage($('#githubSettingsMessage'), '');
@@ -591,7 +738,7 @@ document.addEventListener('click', (event) => {
   if (editIncome || editExpense) {
     const button = editIncome || editExpense;
     $('#cashflowRecordsDialog').close();
-    openCashflowEntry(editIncome ? 'income' : 'expense', editIncome ? button.dataset.editIncome : button.dataset.editExpense);
+    openCashflowEntry(editIncome ? 'income' : 'expense', editIncome ? button.dataset.editIncome : button.dataset.editExpense, true);
   }
   const remove = event.target.closest('[data-delete]');
   if (remove?.dataset.delete === 'cashflow') deleteCashflow(remove.dataset.id);

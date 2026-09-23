@@ -5,7 +5,7 @@ const defaults = {
   settingsUpdatedAt: '',
   assetsUpdatedAt: '',
   cashflowsUpdatedAt: '',
-  assetSummary: { totalBalance: 0, holdingsValue: 0, laborPension: { tenureYears: 0, tenureMonths: 0, employerContribution: 0, returns: 0, total: 0 } },
+  assetSummary: { totalBalance: 0, accounts: [], holdingsValue: 0, laborPension: { tenureYears: 0, tenureMonths: 0, employerContribution: 0, returns: 0, total: 0 } },
   mortgage: { updatedAt: '', bank: '', startMonth: '', termYears: 0, originalPrincipal: 0, historyStartMonth: '', historyOpeningPrincipal: 0, annualInsurancePremium: 0, lastMonthRemainingPrincipal: 0, remainingPrincipal: 0, interestRate: 0, monthlyPayment: 0, monthlyPrincipalPaid: 0, monthlyInterestPaid: 0, insurancePaid: 0, propertyValue: 0, valuationArea: 0, valuationUnitPriceWan: 0, valuationSourceUrl: '', valuationCommunity: '', valuationUpdatedAt: '', recordMonth: '', note: '', annualSummaries: [], payments: [] },
   cashflowDefaults: { baseSalary: 0, mealAllowance: 0, taxFreeOvertime: 0, laborInsurance: 0, healthInsurance: 0, incomeTax: 0, welfareFund: 0, leaveDeduction: 0, internet: 0, managementFee: 0 },
   assets: [],
@@ -13,6 +13,18 @@ const defaults = {
 };
 
 const copy = (value) => JSON.parse(JSON.stringify(value));
+
+function normalizeBalanceAccounts(accounts, totalBalance = 0) {
+  if (Array.isArray(accounts) && (accounts.length || Number(totalBalance) === 0)) {
+    return accounts.map((account, index) => ({
+      id: String(account.id || `account-${index + 1}`),
+      name: String(account.name || `帳戶 ${index + 1}`),
+      balance: Number(account.balance ?? account.totalBalance ?? account.amount ?? 0) || 0
+    }));
+  }
+  const legacyBalance = Number(totalBalance) || 0;
+  return legacyBalance > 0 ? [{ id: 'legacy-account', name: '帳戶', balance: legacyBalance }] : [];
+}
 
 async function fetchDataFile(filename) {
   const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -69,18 +81,23 @@ export async function loadState() {
       if (Number.isFinite(Number(assetsSnapshot.totalBalance))) {
         state.assetSummary = {
           totalBalance: Number(assetsSnapshot.totalBalance),
+          accounts: normalizeBalanceAccounts(assetsSnapshot.accounts, assetsSnapshot.totalBalance),
           holdingsValue: Number(assetsSnapshot.holdingsValue || 0),
           laborPension: { ...defaults.assetSummary.laborPension, ...(assetsSnapshot.laborPension || {}) }
         };
       } else if (Array.isArray(assetsSnapshot.accounts)) {
+        const accounts = normalizeBalanceAccounts(assetsSnapshot.accounts);
         state.assetSummary = {
-          totalBalance: assetsSnapshot.accounts.reduce((sum, item) => sum + Number(item.totalBalance ?? item.amount ?? 0), 0),
+          totalBalance: accounts.reduce((sum, item) => sum + item.balance, 0),
+          accounts,
           holdingsValue: assetsSnapshot.accounts.reduce((sum, item) => sum + Number(item.holdingsValue || 0), 0)
         };
       }
       state.assetsUpdatedAt = assetsSnapshot.updatedAt || '';
     }
   }
+  state.assetSummary.accounts = normalizeBalanceAccounts(state.assetSummary.accounts, state.assetSummary.totalBalance);
+  state.assetSummary.totalBalance = state.assetSummary.accounts.reduce((sum, account) => sum + account.balance, 0);
   if (cashflowsSnapshot && Array.isArray(cashflowsSnapshot.records)) {
     const remoteTime = Date.parse(cashflowsSnapshot.updatedAt || '') || 0;
     const localTime = Date.parse(state.cashflowsUpdatedAt || '') || 0;

@@ -137,7 +137,15 @@ const server = http.createServer(async (request, response) => {
     }
     try {
       const data = await readJson(request);
-      const totalBalance = Number(data.totalBalance);
+      const hasAccountDetails = Array.isArray(data.accounts);
+      let accounts = hasAccountDetails ? data.accounts.map((account, index) => ({
+        id: String(account.id || `account-${index + 1}`),
+        name: String(account.name || '').trim(),
+        balance: Number(account.balance)
+      })) : [];
+      if (accounts.some((account) => !account.name || !Number.isFinite(account.balance) || account.balance < 0)) throw new Error('帳戶資料格式不正確。');
+      const totalBalance = hasAccountDetails ? accounts.reduce((sum, account) => sum + account.balance, 0) : Number(data.totalBalance);
+      if (!hasAccountDetails && Number.isFinite(totalBalance) && totalBalance > 0) accounts = [{ id: 'legacy-account', name: '帳戶', balance: totalBalance }];
       const holdingsValue = Number(data.holdingsValue);
       const pension = data.laborPension || {};
       const tenureYears = Number(pension.tenureYears ?? 20);
@@ -148,6 +156,7 @@ const server = http.createServer(async (request, response) => {
       const output = {
         updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : new Date().toISOString(),
         totalBalance,
+        accounts,
         holdingsValue,
         laborPension: {
           tenureYears,
@@ -172,7 +181,8 @@ const server = http.createServer(async (request, response) => {
     try {
       const data = await readJson(request);
       if (!Array.isArray(data.records)) throw new Error('每月收支資料格式不正確。');
-      const fields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'netSalary', 'bonus', 'dividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'livingExpenses', 'educationExpenses', 'totalIncome', 'fixedExpenses', 'totalExpense', 'net'];
+      const fields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction', 'netSalary', 'bonus', 'cathayDividends', 'yuantaDividends', 'dividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'livingExpenses', 'personalInsuranceExpenses', 'insuranceExpenses', 'petExpenses', 'educationExpenses', 'petInsuranceExpenses', 'propertyLandTax', 'comprehensiveIncomeTax', 'otherTaxes', 'totalIncome', 'fixedExpenses', 'totalExpense', 'net'];
+      const noteFields = ['bonusNote', 'otherTaxesNote'];
       const records = data.records.map((record) => {
         if (!/^\d{4}-\d{2}$/.test(record.month || '')) throw new Error('年月份格式不正確。');
         const output = { month: record.month };
@@ -181,6 +191,10 @@ const server = http.createServer(async (request, response) => {
           if (!Number.isFinite(value) || value < 0 && field !== 'net') throw new Error('收支金額格式不正確。');
           output[field] = value;
         }
+        if (record.cathayDividends == null && record.yuantaDividends == null) output.cathayDividends = output.dividends;
+        if (record.petExpenses == null) output.petExpenses = output.educationExpenses;
+        if (record.personalInsuranceExpenses == null) output.personalInsuranceExpenses = output.insuranceExpenses;
+        for (const field of noteFields) output[field] = typeof record[field] === 'string' ? record[field].trim() : '';
         return output;
       }).sort((a, b) => b.month.localeCompare(a.month));
       const output = { updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : new Date().toISOString(), records };

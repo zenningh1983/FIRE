@@ -48,10 +48,10 @@
       </section>
 
       <section id="assetsPage" class="page" hidden>
-        <div class="page-heading"><div><p class="eyebrow">ASSETS</p><h2>資產</h2></div><span id="assetsUpdatedAt" class="muted"></span></div>
+        <div class="page-heading"><div><p class="eyebrow">ASSETS</p><h2>資產</h2><span id="assetsUpdatedAt" class="muted updated-under-title"></span></div></div>
         <form id="assetForm" class="card form-grid">
           <div class="form-span asset-section-heading"><p class="caption">AVAILABLE ASSETS</p><h3>可運用資產</h3></div>
-          <label class="field"><span>帳戶總餘額</span><input name="totalBalance" type="text" inputmode="decimal" required placeholder="0"></label>
+          <div class="field"><span>帳戶總餘額</span><button id="openAccountBalancesDialog" class="account-total-button" type="button"><strong id="accountTotalBalance">NT$0</strong><small>點擊查看帳戶明細</small></button></div>
           <label class="field"><span>持股市值</span><input name="holdingsValue" type="text" inputmode="decimal" required placeholder="0"></label>
           <section class="asset-subsection form-span">
             <div class="asset-section-heading pension-heading"><div><p class="caption">LABOR PENSION</p><h3>勞退 <button id="openTenureDialog" class="pension-tenure" type="button"></button></h3><a href="https://edesk.bli.gov.tw/me/#/na/login" target="_blank" rel="noopener noreferrer">[由此試算]</a></div></div>
@@ -79,10 +79,10 @@
 
       <section id="cashflowPage" class="page" hidden>
         <div class="page-heading"><div><p class="eyebrow">CASH FLOW</p><h2 class="inline-page-title">每月收支 <button id="openCashflowRecordsDialog" class="heading-link" type="button">（每月紀錄）</button></h2></div><div class="heading-side"><div class="cashflow-actions"><button id="openIncomeDialog" class="button primary" type="button">新增收入</button><button id="openExpenseDialog" class="button secondary" type="button">新增支出</button></div><span id="cashflowsUpdatedAt" class="muted"></span></div></div>
-        <div id="cashflowLatestEmpty" class="card empty">尚未建立每月收支資料。</div>
-        <div id="cashflowLatestOverview" hidden>
-          <div id="cashflowLatestMetrics" class="metric-grid cashflow-latest-metrics"></div>
-          <div class="card cashflow-breakdown"><section><p class="caption">INCOME</p><h3>收入明細</h3><div id="latestIncomeBreakdown"></div></section><section><p class="caption">EXPENSES</p><h3>支出明細</h3><div id="latestExpenseBreakdown"></div></section></div>
+        <div id="cashflowAverageEmpty" class="card empty">尚未建立每月收支資料。</div>
+        <div id="cashflowAverageOverview" hidden>
+          <div id="cashflowAverageMetrics" class="metric-grid cashflow-average-metrics"></div>
+          <div class="card cashflow-breakdown"><section><p class="caption">INCOME</p><h3>平均收入明細</h3><div id="averageIncomeBreakdown"></div></section><section><p class="caption">EXPENSES</p><h3>平均支出明細</h3><div id="averageExpenseBreakdown"></div></section></div>
         </div>
         <dialog id="cashflowEntryDialog" class="cashflow-entry-dialog">
           <div class="dialog-form">
@@ -102,11 +102,11 @@
                 <label class="field"><span>伙食津貼</span><input name="mealAllowance" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>免稅加班費</span><input name="taxFreeOvertime" type="text" inputmode="decimal" required placeholder="0"></label>
                 <p class="cashflow-group-label">扣項</p>
+                <label class="field"><span>請假扣款</span><input name="leaveDeduction" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>勞保</span><input name="laborInsurance" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>健保</span><input name="healthInsurance" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>所得稅</span><input name="incomeTax" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>福利金</span><input name="welfareFund" type="text" inputmode="decimal" required placeholder="0"></label>
-                <label class="field"><span>請假扣款</span><input name="leaveDeduction" type="text" inputmode="decimal" required placeholder="0"></label>
                 <div class="cashflow-total"><span>當月薪資</span><strong id="monthlySalaryTotal">$0</strong></div>
               </div>
             </section>
@@ -114,7 +114,9 @@
               <div class="section-heading"><p class="caption">OTHER INCOME</p><h3>其他收入</h3></div>
               <div class="cashflow-fields">
                 <label class="field"><span>獎金</span><input name="bonus" type="text" inputmode="decimal" required placeholder="0"></label>
-                <label class="field"><span>每月配息</span><input name="dividends" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>備註</span><input name="bonusNote" type="text" placeholder="輸入備註"></label>
+                <label class="field"><span>國泰配息</span><input name="cathayDividends" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>元大配息</span><input name="yuantaDividends" type="text" inputmode="decimal" required placeholder="0"></label>
               </div>
             </section>
           </div>
@@ -126,13 +128,21 @@
                 <label class="field"><span>水電瓦斯</span><input name="utilities" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>電信／網路</span><input name="internet" type="text" inputmode="decimal" required placeholder="0"></label>
                 <label class="field"><span>管理費</span><input name="managementFee" type="text" inputmode="decimal" required placeholder="0"></label>
+                <div class="cashflow-tax-block">
+                  <div class="cashflow-tax-heading"><p class="caption">TAXES</p><h4>稅負</h4></div>
+                  <div class="cashflow-tax-row"><label class="field"><span>房屋／地價稅</span><input name="propertyLandTax" type="text" inputmode="decimal" required placeholder="0"></label></div>
+                  <div class="cashflow-tax-row"><label class="field"><span>綜合所得稅</span><input name="comprehensiveIncomeTax" type="text" inputmode="decimal" required placeholder="0"></label></div>
+                  <div class="cashflow-tax-row"><label class="field"><span>其他稅務</span><input name="otherTaxes" type="text" inputmode="decimal" required placeholder="0"></label><label class="field"><span>備註</span><input name="otherTaxesNote" type="text" placeholder="輸入備註"></label></div>
+                </div>
               </div>
             </section>
             <section class="cashflow-section">
               <div class="section-heading"><p class="caption">OTHER EXPENSES</p><h3>其他支出</h3></div>
               <div class="cashflow-fields">
                 <label class="field"><span>生活開銷</span><input name="livingExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
-                <label class="field"><span>教育費用</span><input name="educationExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>個人保險</span><input name="personalInsuranceExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>兩隻花費</span><input name="petExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
+                <label class="field"><span>兩隻保險</span><input name="petInsuranceExpenses" type="text" inputmode="decimal" required placeholder="0"></label>
               </div>
             </section>
           </div>
@@ -170,9 +180,21 @@
   <dialog id="cashflowRecordsDialog" class="wide-dialog">
     <div class="dialog-form">
       <div class="dialog-heading"><h2>每月收支紀錄</h2><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+      <label class="field cashflow-year-filter" for="cashflowYearFilter"><span>年份</span><select id="cashflowYearFilter"><option value="">全部年份</option></select></label>
       <div id="cashflowEmpty" class="empty">還沒有收支資料。</div>
-      <div class="table-wrap"><table id="cashflowTable"><thead><tr><th>月份</th><th class="number">收入</th><th class="number">固定支出</th><th class="number">生活開銷</th><th class="number">教育費用</th><th class="number">總支出</th><th class="number">結餘</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table id="cashflowTable"><thead><tr><th>月份</th><th class="number">薪資</th><th class="number">獎金</th><th class="number">國泰配息</th><th class="number">元大配息</th><th class="number">固定支出</th><th class="number">生活開銷</th><th class="number">個人保險</th><th class="number">兩隻花費</th><th class="number">兩隻保險</th><th class="number">房屋／地價稅</th><th class="number">綜合所得稅</th><th class="number">其他稅務</th><th class="number">總支出</th><th class="number">結餘</th><th></th></tr></thead><tbody></tbody></table></div>
     </div>
+  </dialog>
+
+  <dialog id="accountBalancesDialog" class="account-balances-dialog">
+    <form id="accountBalancesForm" class="dialog-form">
+      <div class="dialog-heading"><div><h2>帳戶總餘額</h2><p id="accountBalancesUpdatedAt" class="muted dialog-updated-at"></p></div><button class="icon-button" type="button" data-close-dialog aria-label="關閉">×</button></div>
+      <div id="accountBalanceRows" class="account-balance-rows"></div>
+      <button id="addAccountBalance" class="button secondary compact" type="button">＋ 新增帳戶</button>
+      <div class="account-balances-total"><span>帳戶合計</span><strong id="accountBalancesTotal">NT$0</strong></div>
+      <p id="accountBalancesMessage" class="message" role="status"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" data-close-dialog>取消</button><button class="button primary" type="submit">更新帳戶餘額</button></div>
+    </form>
   </dialog>
 
   <dialog id="tenureDialog">
