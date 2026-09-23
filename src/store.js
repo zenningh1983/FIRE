@@ -7,7 +7,7 @@ const defaults = {
   cashflowsUpdatedAt: '',
   assetSummary: { totalBalance: 0, holdingsValue: 0, laborPension: { tenureYears: 0, tenureMonths: 0, employerContribution: 0, returns: 0, total: 0 } },
   mortgage: { updatedAt: '', bank: '', startMonth: '', termYears: 0, originalPrincipal: 0, historyStartMonth: '', historyOpeningPrincipal: 0, annualInsurancePremium: 0, lastMonthRemainingPrincipal: 0, remainingPrincipal: 0, interestRate: 0, monthlyPayment: 0, monthlyPrincipalPaid: 0, monthlyInterestPaid: 0, insurancePaid: 0, propertyValue: 0, valuationArea: 0, valuationUnitPriceWan: 0, valuationSourceUrl: '', valuationCommunity: '', valuationUpdatedAt: '', recordMonth: '', note: '', annualSummaries: [], payments: [] },
-  cashflowDefaults: { baseSalary: 0, mealAllowance: 0, taxFreeOvertime: 0, laborInsurance: 0, healthInsurance: 0, incomeTax: 0, welfareFund: 0, internet: 0, managementFee: 0 },
+  cashflowDefaults: { baseSalary: 0, mealAllowance: 0, taxFreeOvertime: 0, laborInsurance: 0, healthInsurance: 0, incomeTax: 0, welfareFund: 0, leaveDeduction: 0, internet: 0, managementFee: 0 },
   assets: [],
   cashflows: []
 };

@@ -251,12 +251,12 @@ function renderCashflows() {
   ].join('');
 }
 
-const cashflowAmountFields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'bonus', 'dividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'livingExpenses', 'educationExpenses'];
+const cashflowAmountFields = ['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction', 'bonus', 'dividends', 'mortgage', 'utilities', 'internet', 'managementFee', 'livingExpenses', 'educationExpenses'];
 
 function updateMonthlySalaryTotal() {
   const form = $('#cashflowForm');
   const additions = ['baseSalary', 'mealAllowance', 'taxFreeOvertime'].map((field) => parseNumber(form.elements[field].value));
-  const deductions = ['laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund'].map((field) => parseNumber(form.elements[field].value));
+  const deductions = ['laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction'].map((field) => parseNumber(form.elements[field].value));
   const values = [...additions, ...deductions];
   const total = additions.reduce((sum, value) => sum + value, 0) - deductions.reduce((sum, value) => sum + value, 0);
   $('#monthlySalaryTotal').textContent = values.every(Number.isFinite) ? money.format(total) : '—';
@@ -307,7 +307,7 @@ async function saveCashflow(form) {
   if (Object.values(values).some((value) => !Number.isFinite(value) || value < 0)) {
     setMessage($('#cashflowMessage'), '請確認所有收入與支出都是有效金額。', true); return;
   }
-  const netSalary = values.baseSalary + values.mealAllowance + values.taxFreeOvertime - values.laborInsurance - values.healthInsurance - values.incomeTax - values.welfareFund;
+  const netSalary = values.baseSalary + values.mealAllowance + values.taxFreeOvertime - values.laborInsurance - values.healthInsurance - values.incomeTax - values.welfareFund - values.leaveDeduction;
   const totalIncome = netSalary + values.bonus + values.dividends;
   const fixedExpenses = values.mortgage + values.utilities + values.internet + values.managementFee;
   const totalExpense = fixedExpenses + values.livingExpenses + values.educationExpenses;
@@ -575,7 +575,7 @@ function enableAmountCalculations(formSelector, messageSelector) {
 
 enableAmountCalculations('#assetForm', '#assetMessage');
 enableAmountCalculations('#cashflowForm', '#cashflowMessage');
-['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund'].forEach((name) => {
+['baseSalary', 'mealAllowance', 'taxFreeOvertime', 'laborInsurance', 'healthInsurance', 'incomeTax', 'welfareFund', 'leaveDeduction'].forEach((name) => {
   $('#cashflowForm').elements[name].addEventListener('input', updateMonthlySalaryTotal);
 });
 ['employerContribution', 'pensionReturns'].forEach((name) => {
