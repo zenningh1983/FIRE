@@ -8,7 +8,7 @@
 node server.js
 ```
 
-開啟 <http://localhost:8080>。
+開啟 <http://localhost:8080>，使用具備私人 `Json-data` repository 讀寫權限的 GitHub Token 登入。本機預覽與 GitHub Pages 都直接從該 repository 讀寫財務資料，不需要本機 `data/` 目錄。
 
 ## 私人資料儲存
 
@@ -18,7 +18,7 @@ node server.js
 - 房貸：`Json-data/mortgage.json`
 - 個人預設值：`Json-data/defaults.json`
 
-登入時需提供具備 Private `Json-data` repository Contents 讀寫權限的 GitHub Personal Access Token。Token 只會存入該瀏覽器的 `localStorage`；線上更新會透過 GitHub Contents API 寫入私人 JSON。
+登入時需提供具備 Private `Json-data` repository Contents 讀寫權限的 GitHub Personal Access Token。Token 只會存入該瀏覽器的 `localStorage`；所有資料更新都透過 GitHub Contents API 寫入私人 JSON。
 
 `FIRE` GitHub Pages 可保持公開，但不包含財務 JSON；未通過 Token 驗證時不會載入私人資料。
 

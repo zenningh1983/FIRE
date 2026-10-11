@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
 
 const defaults = {
-  settings: { currentAge: 30, retirementAge: 55, semiRetirementEndAge: 60, lifeExpectancy: 90, retirementMonthlySpend: 0, annualTravelTrips: 0, carBudget: 1200000, emergencyCashReserve: 100000, unionInsuranceMonthly: 0, laborPensionAccessAge: 60, laborPensionPayoutMode: 'lump', laborInsuranceBenefitAge: 65, laborInsurancePayoutMode: 'monthly', laborInsuranceMonthlyBenefit: 0, child1BirthMonth: '2013-08', child2BirthMonth: '2015-09', childSupportUntilAge: 20, childrenMonthlySupportAfterRetirement: 0, childrenSupportUntilParentAge: 70, childrenMilestoneReserve: 0, childrenMilestoneAge: 60, parentsMonthlySupport: 0, parentSupportUntilAge: 65, parentMedicalReserve: 0, healthCareStartAge: 70, healthCareMonthlyExpense: 0, personalMedicalReserve: 0, preReturn: 5, postReturn: 3, inflation: 2 },
+  settings: { currentAge: 30, retirementAge: 55, semiRetirementEndAge: 60, lifeExpectancy: 90, retirementMonthlySpend: 0, annualTravelTrips: 0, carBudget: 1200000, emergencyCashReserve: 100000, laborPensionAccessAge: 60, laborPensionPayoutMode: 'lump', laborInsuranceBenefitAge: 65, laborInsurancePayoutMode: 'monthly', laborInsuranceMonthlyBenefit: 0, child1BirthMonth: '2013-08', child2BirthMonth: '2015-09', childSupportUntilAge: 20, childrenMonthlySupportAfterRetirement: 0, childrenSupportUntilParentAge: 70, childrenMilestoneReserve: 0, childrenMilestoneAge: 60, parentsMonthlySupport: 0, parentSupportUntilAge: 65, parentMedicalReserve: 0, healthCareStartAge: 70, healthCareMonthlyExpense: 0, personalMedicalReserve: 0, preReturn: 5, postReturn: 3, inflation: 2 },
   settingsUpdatedAt: '',
   settingsSyncPending: false,
   assetsUpdatedAt: '',
@@ -28,11 +28,8 @@ function normalizeBalanceAccounts(accounts, totalBalance = 0) {
 }
 
 async function fetchDataFile(filename) {
-  const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-  const url = isLocal
-    ? `./data/${filename}`
-    : `https://api.github.com/repos/${CONFIG.githubOwner}/${CONFIG.githubDataRepo}/contents/${filename}?ref=${encodeURIComponent(CONFIG.githubBranch)}`;
-  const headers = isLocal ? {} : {
+  const url = `https://api.github.com/repos/${CONFIG.githubOwner}/${CONFIG.githubDataRepo}/contents/${filename}?ref=${encodeURIComponent(CONFIG.githubBranch)}`;
+  const headers = {
     Accept: 'application/vnd.github.raw+json',
     Authorization: `Bearer ${loadGithubToken()}`,
     'X-GitHub-Api-Version': '2022-11-28'

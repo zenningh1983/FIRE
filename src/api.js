@@ -1,9 +1,5 @@
 import { CONFIG } from './config.js';
 
-function isLocalhost() {
-  return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-}
-
 function encodeBase64(value) {
   const bytes = new TextEncoder().encode(value);
   let binary = '';
@@ -20,19 +16,11 @@ export async function validateGithubToken(token) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(response.status === 401 ? 'GitHub Token 無效。' : data.message || '無法驗證 GitHub Token。');
-  if (!data.permissions?.push) throw new Error('此 Token 沒有 FIRE repository 的 Contents 寫入權限。');
+  if (!data.permissions?.push) throw new Error('此 Token 沒有 Json-data repository 的 Contents 寫入權限。');
   return data;
 }
 
-async function writeJson(path, data, localEndpoint, message) {
-  if (isLocalhost()) {
-    const response = await fetch(localEndpoint, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || `無法更新 ${path}。`);
-    return result;
-  }
+async function writeJson(path, data, message) {
   const token = localStorage.getItem(CONFIG.githubTokenKey) || '';
   if (!token) throw new Error('請先從右上角設定 GitHub Token。');
   const url = `https://api.github.com/repos/${CONFIG.githubOwner}/${CONFIG.githubDataRepo}/contents/${path}`;
@@ -53,23 +41,27 @@ async function writeJson(path, data, localEndpoint, message) {
 }
 
 export async function writeMortgage(mortgage) {
-  return writeJson('mortgage.json', mortgage, '/api/mortgage', 'Update mortgage data');
+  return writeJson('mortgage.json', mortgage, 'Update mortgage data');
 }
 
 export async function writeAssets(assetSummary, updatedAt) {
-  return writeJson('assets.json', { updatedAt, ...assetSummary }, '/api/assets', 'Update asset data');
+  return writeJson('assets.json', { updatedAt, ...assetSummary }, 'Update asset data');
 }
 
 export async function writeCashflows(records, updatedAt) {
-  return writeJson('cashflows.json', { updatedAt, records }, '/api/cashflows', 'Update monthly cash flow');
+  return writeJson('cashflows.json', { updatedAt, records }, 'Update monthly cash flow');
 }
 
 export async function writeSettings(settings, updatedAt) {
-  return writeJson('retirement-settings.json', { updatedAt, settings }, '/api/settings', 'Update retirement settings');
+  return writeJson('retirement-settings.json', { updatedAt, settings }, 'Update retirement settings');
 }
 
-export async function fetchPropertyValuation() {
-  const response = await fetch('/api/property-valuation', { cache: 'no-store' });
+export async function fetchPropertyValuation(mortgage) {
+  const params = new URLSearchParams({
+    source: mortgage.valuationSourceUrl || '',
+    area: String(mortgage.valuationArea || 0)
+  });
+  const response = await fetch(`/api/property-valuation?${params}`, { cache: 'no-store' });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || '無法取得 591 估值。');
   return data;
